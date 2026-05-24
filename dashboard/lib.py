@@ -8,14 +8,21 @@ from typing import Any
 import httpx
 import streamlit as st
 
+from dashboard.auth import get_access_token
+
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+
+
+def _auth_headers() -> dict[str, str]:
+    token = get_access_token()
+    return {"Authorization": f"Bearer {token}"} if token else {}
 
 
 @st.cache_data(ttl=30)
 def api_get(path: str, params: dict[str, Any] | None = None) -> Any:
-    """GET na API com cache de 30s."""
+    """GET na API com cache de 30s. Inclui Authorization se logado."""
     url = f"{API_BASE_URL}{path}"
-    response = httpx.get(url, params=params, timeout=30.0)
+    response = httpx.get(url, params=params, headers=_auth_headers(), timeout=30.0)
     response.raise_for_status()
     return response.json()
 
@@ -23,7 +30,9 @@ def api_get(path: str, params: dict[str, Any] | None = None) -> Any:
 def api_post(path: str, json_body: Any = None, params: dict[str, Any] | None = None) -> Any:
     """POST na API (sem cache)."""
     url = f"{API_BASE_URL}{path}"
-    response = httpx.post(url, json=json_body, params=params, timeout=120.0)
+    response = httpx.post(
+        url, json=json_body, params=params, headers=_auth_headers(), timeout=120.0
+    )
     response.raise_for_status()
     return response.json() if response.content else None
 
@@ -48,8 +57,10 @@ def merchant_selector(label: str = "Merchant") -> tuple[str, str] | None:
 def check_api_health() -> bool:
     """True se API responde. Mostra erro visual se não."""
     try:
-        health = api_get("/health")
-        return health.get("status") == "ok"
+        # /health não exige auth
+        response = httpx.get(f"{API_BASE_URL}/health", timeout=5.0)
+        response.raise_for_status()
+        return response.json().get("status") == "ok"
     except Exception as e:
         st.error(
             f"❌ API offline em {API_BASE_URL}. "

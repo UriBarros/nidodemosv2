@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from gtrifood.api.deps import get_db, get_tenant_id
+from gtrifood.api.deps import get_current_tenant, get_db
 from gtrifood.api.schemas import FinancialEventOut, SyncResultOut
 from gtrifood.models.db import FinancialEvent
 from gtrifood.services.financial_sync import sync_financial_for_merchant
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/financial", tags=["financial"])
 @router.get("", response_model=list[FinancialEventOut])
 async def list_financial(
     db: AsyncSession = Depends(get_db),
-    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
     merchant_id: uuid.UUID | None = Query(default=None),
     event_type: str | None = Query(default=None),
     begin: date | None = Query(default=None),
@@ -45,7 +45,7 @@ async def list_financial(
 @router.get("/summary")
 async def financial_summary(
     db: AsyncSession = Depends(get_db),
-    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
     merchant_id: uuid.UUID | None = Query(default=None),
 ) -> dict[str, float]:
     """Soma agregada por tipo de evento."""
@@ -64,7 +64,7 @@ async def financial_summary(
 async def trigger_financial_sync(
     merchant_id: uuid.UUID,
     days_back: int = Query(default=30, ge=1, le=365),
-    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
 ) -> SyncResultOut:
     try:
         count = await sync_financial_for_merchant(

@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
+from dashboard.auth import render_sidebar_user, require_auth  # noqa: E402
 from dashboard.lib import api_get, api_post, check_api_health, merchant_selector  # noqa: E402
 
 st.set_page_config(page_title="Reviews | gtrifood", page_icon="⭐", layout="wide")
@@ -17,6 +18,9 @@ st.title("Reviews")
 
 if not check_api_health():
     st.stop()
+
+render_sidebar_user()
+require_auth()
 
 # --- Filtros ---
 with st.sidebar:

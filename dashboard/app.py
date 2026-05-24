@@ -13,6 +13,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import streamlit as st  # noqa: E402
 
+from dashboard.auth import (  # noqa: E402
+    is_authenticated,
+    render_login_form,
+    render_sidebar_user,
+)
 from dashboard.lib import api_get, api_post, check_api_health  # noqa: E402
 
 st.set_page_config(
@@ -26,6 +31,13 @@ st.title("gtrifood")
 st.caption("Painel de dados iFood Developer — dados unificados de pedidos, financeiro e reviews.")
 
 if not check_api_health():
+    st.stop()
+
+render_sidebar_user()
+
+# --- Gate de auth ---
+if not is_authenticated():
+    render_login_form()
     st.stop()
 
 st.divider()

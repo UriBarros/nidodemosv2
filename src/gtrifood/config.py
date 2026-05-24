@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_anon_key: SecretStr
     supabase_service_role_key: SecretStr
+    supabase_jwt_secret: SecretStr | None = None  # pega em Settings → API → JWT Settings
     database_url: SecretStr
 
     # --- FastAPI ---

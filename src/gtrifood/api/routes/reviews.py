@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from gtrifood.api.deps import get_db, get_tenant_id
+from gtrifood.api.deps import get_current_tenant, get_db
 from gtrifood.api.schemas import ReviewOut, SyncResultOut
 from gtrifood.models.db import Review
 from gtrifood.services.reviews_sync import sync_reviews_for_merchant
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/reviews", tags=["reviews"])
 @router.get("", response_model=list[ReviewOut])
 async def list_reviews(
     db: AsyncSession = Depends(get_db),
-    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
     merchant_id: uuid.UUID | None = Query(default=None),
     min_score: int | None = Query(default=None, ge=1, le=5),
     answered: bool | None = Query(default=None),
@@ -41,7 +41,7 @@ async def list_reviews(
 @router.get("/summary")
 async def reviews_summary(
     db: AsyncSession = Depends(get_db),
-    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
     merchant_id: uuid.UUID | None = Query(default=None),
 ) -> dict[str, float | int]:
     """Métricas agregadas: total, média de score, % respondidas."""
@@ -70,7 +70,7 @@ async def reviews_summary(
 @router.post("/sync", response_model=SyncResultOut)
 async def trigger_reviews_sync(
     merchant_id: uuid.UUID,
-    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
 ) -> SyncResultOut:
     try:
         count = await sync_reviews_for_merchant(tenant_id, merchant_id)

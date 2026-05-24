@@ -45,6 +45,21 @@ class Tenant(Base):
     merchants: Mapped[list["Merchant"]] = relationship(back_populates="tenant")
 
 
+class TenantUser(Base):
+    __tablename__ = "tenant_users"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    role: Mapped[str] = mapped_column(Text, nullable=False, default="member")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (CheckConstraint("role in ('owner', 'admin', 'member')"),)
+
+
 class IFoodCredential(Base):
     __tablename__ = "ifood_credentials"
 

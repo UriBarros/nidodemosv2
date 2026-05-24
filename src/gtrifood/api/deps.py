@@ -1,17 +1,17 @@
-"""Dependencies do FastAPI — DB session, tenant context, auth (futuro)."""
+"""Dependencies do FastAPI — DB session, auth, tenant context."""
 
 from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
 
-from fastapi import Header
+from fastapi import Depends, Header, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gtrifood.core.auth import AuthError, AuthUser, decode_supabase_jwt
 from gtrifood.core.db import SessionFactory
-
-# Tenant default no MVP — futuramente vem do JWT do Supabase Auth
-DEFAULT_TENANT_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+from gtrifood.models.db import TenantUser
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:
@@ -25,11 +25,39 @@ async def get_db() -> AsyncIterator[AsyncSession]:
             raise
 
 
-def get_tenant_id(x_tenant_id: str | None = Header(default=None)) -> uuid.UUID:
-    """Dependency: tenant_id do request. No MVP usa default; depois vem do JWT."""
-    if x_tenant_id:
-        try:
-            return uuid.UUID(x_tenant_id)
-        except ValueError:
-            pass
-    return DEFAULT_TENANT_ID
+async def get_current_user(authorization: str = Header(default="")) -> AuthUser:
+    """Dependency: extrai e valida o JWT do Supabase do header Authorization."""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token Bearer ausente",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    token = authorization[7:].strip()
+    try:
+        return decode_supabase_jwt(token)
+    except AuthError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e),
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from e
+
+
+async def get_current_tenant(
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> uuid.UUID:
+    """Dependency: tenant_id do usuário logado (busca em tenant_users)."""
+    result = await db.execute(
+        select(TenantUser.tenant_id)
+        .where(TenantUser.user_id == user.user_id)
+        .limit(1)
+    )
+    tenant_id = result.scalar_one_or_none()
+    if not tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Usuário sem tenant vinculado",
+        )
+    return tenant_id

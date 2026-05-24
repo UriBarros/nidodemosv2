@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from gtrifood.api.deps import get_db, get_tenant_id
+from gtrifood.api.deps import get_current_tenant, get_db
 from gtrifood.api.schemas import CountOut, OrderOut
 from gtrifood.models.db import Order
 
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 @router.get("", response_model=list[OrderOut])
 async def list_orders(
     db: AsyncSession = Depends(get_db),
-    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
     merchant_id: uuid.UUID | None = Query(default=None),
     status: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=500),
@@ -38,7 +38,7 @@ async def list_orders(
 @router.get("/count", response_model=CountOut)
 async def count_orders(
     db: AsyncSession = Depends(get_db),
-    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
     merchant_id: uuid.UUID | None = Query(default=None),
     status: str | None = Query(default=None),
 ) -> CountOut:
@@ -56,7 +56,7 @@ async def count_orders(
 async def get_order(
     order_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
 ) -> Order:
     result = await db.execute(
         select(Order).where(Order.id == order_id, Order.tenant_id == tenant_id)
