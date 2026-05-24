@@ -9,8 +9,10 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gtrifood.api.deps import get_current_tenant, get_db
-from gtrifood.api.schemas import CountOut, OrderOut
-from gtrifood.models.db import Order
+from gtrifood.api.schemas import CountOut, OrderEventOut, OrderOut
+from gtrifood.integrations.ifood.client import IFoodAPIError, IFoodClient
+from gtrifood.integrations.ifood.orders import OrdersAPI
+from gtrifood.models.db import Order, OrderEvent
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -65,3 +67,110 @@ async def get_order(
     if not order:
         raise HTTPException(status_code=404, detail="pedido não encontrado")
     return order
+
+
+async def _get_order_or_404(
+    order_id: uuid.UUID, tenant_id: uuid.UUID, db: AsyncSession
+) -> Order:
+    result = await db.execute(
+        select(Order).where(Order.id == order_id, Order.tenant_id == tenant_id)
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="pedido não encontrado")
+    return order
+
+
+@router.post("/{order_id}/confirm", status_code=202)
+async def confirm_order(
+    order_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> dict[str, str]:
+    """Confirma pedido (loja aceita). iFood emite evento CFM em seguida."""
+    order = await _get_order_or_404(order_id, tenant_id, db)
+    api = OrdersAPI(IFoodClient())
+    try:
+        await api.confirm(order.ifood_order_id)
+    except IFoodAPIError as e:
+        raise HTTPException(status_code=502, detail=f"iFood: {e}") from e
+    return {"message": "Pedido confirmado. Aguarde evento CFM."}
+
+
+@router.post("/{order_id}/dispatch", status_code=202)
+async def dispatch_order(
+    order_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> dict[str, str]:
+    """Marca pedido como despachado (saiu pra entrega)."""
+    order = await _get_order_or_404(order_id, tenant_id, db)
+    api = OrdersAPI(IFoodClient())
+    try:
+        await api.dispatch(order.ifood_order_id)
+    except IFoodAPIError as e:
+        raise HTTPException(status_code=502, detail=f"iFood: {e}") from e
+    return {"message": "Pedido despachado. Aguarde evento DSP."}
+
+
+@router.post("/{order_id}/ready-to-pickup", status_code=202)
+async def ready_to_pickup_order(
+    order_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> dict[str, str]:
+    """Marca pedido como pronto pra retirada (RPR)."""
+    order = await _get_order_or_404(order_id, tenant_id, db)
+    api = OrdersAPI(IFoodClient())
+    try:
+        await api.ready_to_pickup(order.ifood_order_id)
+    except IFoodAPIError as e:
+        raise HTTPException(status_code=502, detail=f"iFood: {e}") from e
+    return {"message": "Pedido pronto pra retirada. Aguarde evento RPR."}
+
+
+@router.post("/{order_id}/cancel", status_code=202)
+async def cancel_order(
+    order_id: uuid.UUID,
+    reason: str = Query(..., min_length=3),
+    code: str = Query(
+        "501",
+        description="Código iFood: 501=PROBLEMAS_SISTEMA, 502=DUPLICIDADE, "
+        "503=ITEM_INDISPONIVEL, 504=SEM_MOTOBOY",
+    ),
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> dict[str, str]:
+    """Solicita cancelamento. iFood pode aceitar (CRA) ou recusar (CRD)."""
+    order = await _get_order_or_404(order_id, tenant_id, db)
+    api = OrdersAPI(IFoodClient())
+    try:
+        await api.request_cancellation(order.ifood_order_id, reason=reason, code=code)
+    except IFoodAPIError as e:
+        raise HTTPException(status_code=502, detail=f"iFood: {e}") from e
+    return {"message": "Cancelamento solicitado. Aguarde evento CRA ou CRD."}
+
+
+@router.get("/{order_id}/events", response_model=list[OrderEventOut])
+async def get_order_events(
+    order_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> list[OrderEvent]:
+    """Timeline de eventos do pedido (PLC → CFM → DSP → CON ou cancelamentos)."""
+    order_result = await db.execute(
+        select(Order).where(Order.id == order_id, Order.tenant_id == tenant_id)
+    )
+    order = order_result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="pedido não encontrado")
+
+    events_result = await db.execute(
+        select(OrderEvent)
+        .where(
+            OrderEvent.tenant_id == tenant_id,
+            OrderEvent.ifood_order_id == order.ifood_order_id,
+        )
+        .order_by(OrderEvent.received_at)
+    )
+    return list(events_result.scalars().all())

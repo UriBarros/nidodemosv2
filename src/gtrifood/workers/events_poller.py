@@ -29,7 +29,15 @@ from gtrifood.models.db import Merchant, OrderEvent
 from gtrifood.services.orders_sync import upsert_order
 
 POLL_INTERVAL_SECONDS = 30
-ORDER_EVENT_CODES = {"PLC", "CFM", "DSP", "CON", "CAN", "CAR", "RFC"}
+
+# Categorias que ignoramos (heartbeat, controle interno)
+IGNORED_CATEGORIES = {"KEEPALIVE", "HANDSHAKE"}
+
+# Códigos conhecidos de status de pedido (referência — não restringimos por
+# essa lista; qualquer evento ORDER_STATUS com orderId é processado).
+# PLC=PLACED, CFM=CONFIRMED, RPR=READY_FOR_PICKUP, DSP=DISPATCHED,
+# ARR=ARRIVED, CON=CONCLUDED, CAN=CANCELLED, CAR=CANCELLATION_REQUESTED,
+# CRA=CANCELLATION_REQUEST_ACCEPTED, CRD=CANCELLATION_REQUEST_DENIED.
 
 
 class EventsPoller:
@@ -74,32 +82,61 @@ class EventsPoller:
             await session.execute(stmt)
 
     async def _process_event(self, event: dict[str, Any]) -> None:
-        """Persiste evento + se for de pedido, sincroniza order."""
+        """Persiste evento + se for ORDER_STATUS, sincroniza order.
+
+        Não hardcoda lista de códigos. Confia no `category` do iFood:
+        - ORDER_STATUS: muda status do pedido — busca detalhes + UPSERT
+        - KEEPALIVE/HANDSHAKE: ignora (sem persistir)
+        - SAC, outros: persiste pra auditoria mas não atualiza order
+        """
+        category = (event.get("category") or "ORDER_STATUS").upper()
+
+        # Heartbeats não precisam ser auditados — só polui order_events
+        if category in IGNORED_CATEGORIES:
+            return
+
         await self._persist_event(event)
 
         code = event.get("code")
+        full_code = event.get("fullCode")
         order_id = event.get("orderId")
         ifood_merchant_id = event.get("merchantId") or event.get("merchant", {}).get("id")
-        if code in ORDER_EVENT_CODES and order_id and ifood_merchant_id:
-            resolved = await self._resolve_merchant(ifood_merchant_id)
-            if resolved:
-                try:
-                    # passa fullCode do evento como status — payload de GET /orders nem
-                    # sempre tem status na raiz
-                    await upsert_order(
-                        resolved[0],
-                        resolved[1],
-                        order_id,
-                        status=event.get("fullCode") or code,
-                    )
-                except Exception as e:
-                    self._log.error(
-                        "falha_upsert_order",
-                        ifood_order_id=order_id,
-                        error=str(e),
-                    )
-            else:
-                self._log.warning("merchant_desconhecido", ifood_merchant_id=ifood_merchant_id)
+
+        # Só ORDER_STATUS gera UPSERT em orders
+        if category != "ORDER_STATUS" or not order_id or not ifood_merchant_id:
+            self._log.debug(
+                "evento_sem_acao_order",
+                category=category,
+                code=code,
+                order_id=order_id,
+            )
+            return
+
+        resolved = await self._resolve_merchant(ifood_merchant_id)
+        if not resolved:
+            self._log.warning("merchant_desconhecido", ifood_merchant_id=ifood_merchant_id)
+            return
+
+        try:
+            await upsert_order(
+                resolved[0],
+                resolved[1],
+                order_id,
+                status=full_code or code,
+            )
+            self._log.info(
+                "order_status_processado",
+                ifood_order_id=order_id,
+                code=code,
+                full_code=full_code,
+            )
+        except Exception as e:
+            self._log.error(
+                "falha_upsert_order",
+                ifood_order_id=order_id,
+                code=code,
+                error=str(e),
+            )
 
     async def run_once(self) -> int:
         """Faz uma iteração: poll → process → ack. Retorna número de eventos processados."""

@@ -23,6 +23,10 @@ class OrdersAPI:
         """Marca pedido como despachado (saiu pra entrega)."""
         await self._client.post(f"/order/v1.0/orders/{order_id}/dispatch")
 
+    async def ready_to_pickup(self, order_id: str) -> None:
+        """Marca pedido como pronto pra retirada (RPR)."""
+        await self._client.post(f"/order/v1.0/orders/{order_id}/readyToPickup")
+
     async def request_cancellation(self, order_id: str, reason: str, code: str) -> None:
         """Solicita cancelamento. iFood pode aceitar/recusar.
 

@@ -34,6 +34,19 @@ class OrderOut(BaseModel):
     total_amount: Decimal | None
     customer_name: str | None
     synced_at: datetime
+    updated_at: datetime
+
+
+class OrderEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    ifood_event_id: str
+    ifood_order_id: str | None
+    code: str
+    full_code: str | None
+    acknowledged_at: datetime | None
+    received_at: datetime
 
 
 class FinancialEventOut(BaseModel):
