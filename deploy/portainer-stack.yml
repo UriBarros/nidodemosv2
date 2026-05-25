@@ -93,8 +93,9 @@ services:
     environment:
       SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
-      # Dashboard chama API externamente pra reusar SSL e domínio único
-      API_BASE_URL: https://gtrifood.aceleradoragtr.cloud/api
+      # Dashboard chama API pela rede interna do Swarm (sem SSL, sem ida na net).
+      # Nome do service em Swarm com stack=gtrifood resolve via DNS interno.
+      API_BASE_URL: http://gtrifood_api:8000
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     command:
       - streamlit
