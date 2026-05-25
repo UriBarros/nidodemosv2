@@ -1,0 +1,130 @@
+# =============================================================================
+# gtrifood — stack Docker Swarm pra Portainer + Traefik
+#
+# Como subir:
+#   Portainer → Stacks → Add stack → Repository
+#     - Repository URL: https://github.com/UriBarros/nidodemosv2
+#     - Reference: refs/heads/main
+#     - Compose path: deploy/portainer-stack.yml
+#     - Env vars: preencher TODAS as variáveis abaixo no UI do Portainer
+#     - Enable webhook: SIM (copiar URL e setar como GitHub Secret
+#       PORTAINER_WEBHOOK_URL)
+#
+# Pré-requisitos:
+#   - Rede externa "network_public" (compartilhada com Traefik)
+#   - Traefik configurado com certresolver "letsencrypt" e entrypoint "websecure"
+#   - DNS: gtrifood.aceleradoragtr.cloud CNAME → automacao.aceleradoragtr.cloud
+# =============================================================================
+version: "3.8"
+
+services:
+  api:
+    image: ghcr.io/uribarros/nidodemosv2:latest
+    environment:
+      IFOOD_CLIENT_ID: ${IFOOD_CLIENT_ID}
+      IFOOD_CLIENT_SECRET: ${IFOOD_CLIENT_SECRET}
+      IFOOD_BASE_URL: ${IFOOD_BASE_URL:-https://merchant-api.ifood.com.br}
+      IFOOD_AUTH_URL: ${IFOOD_AUTH_URL:-https://merchant-api.ifood.com.br/authentication/v1.0/oauth/token}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-}
+      DATABASE_URL: ${DATABASE_URL}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      API_HOST: 0.0.0.0
+      API_PORT: "8000"
+      API_ROOT_PATH: /api
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    command:
+      - uvicorn
+      - gtrifood.api.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --proxy-headers
+      - --forwarded-allow-ips=*
+      - --root-path=/api
+    networks:
+      - network_public
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      update_config:
+        order: start-first
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=network_public"
+        - "traefik.http.routers.gtrifood-api.rule=Host(`gtrifood.aceleradoragtr.cloud`) && PathPrefix(`/api`)"
+        - "traefik.http.routers.gtrifood-api.entrypoints=websecure"
+        - "traefik.http.routers.gtrifood-api.tls=true"
+        - "traefik.http.routers.gtrifood-api.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.gtrifood-api.priority=10"
+        - "traefik.http.middlewares.gtrifood-api-strip.stripprefix.prefixes=/api"
+        - "traefik.http.routers.gtrifood-api.middlewares=gtrifood-api-strip"
+        - "traefik.http.services.gtrifood-api.loadbalancer.server.port=8000"
+
+  worker:
+    image: ghcr.io/uribarros/nidodemosv2:latest
+    environment:
+      IFOOD_CLIENT_ID: ${IFOOD_CLIENT_ID}
+      IFOOD_CLIENT_SECRET: ${IFOOD_CLIENT_SECRET}
+      IFOOD_BASE_URL: ${IFOOD_BASE_URL:-https://merchant-api.ifood.com.br}
+      IFOOD_AUTH_URL: ${IFOOD_AUTH_URL:-https://merchant-api.ifood.com.br/authentication/v1.0/oauth/token}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      DATABASE_URL: ${DATABASE_URL}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    command: ["python", "scripts/run_poller.py"]
+    networks:
+      - network_public
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 10s
+
+  dashboard:
+    image: ghcr.io/uribarros/nidodemosv2:latest
+    environment:
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      # Dashboard chama API externamente pra reusar SSL e domínio único
+      API_BASE_URL: https://gtrifood.aceleradoragtr.cloud/api
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    command:
+      - streamlit
+      - run
+      - dashboard/app.py
+      - --server.port=8501
+      - --server.address=0.0.0.0
+      - --server.headless=true
+      - --server.enableCORS=false
+      - --server.enableXsrfProtection=false
+      - --browser.gatherUsageStats=false
+    networks:
+      - network_public
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      update_config:
+        order: start-first
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=network_public"
+        - "traefik.http.routers.gtrifood-dashboard.rule=Host(`gtrifood.aceleradoragtr.cloud`)"
+        - "traefik.http.routers.gtrifood-dashboard.entrypoints=websecure"
+        - "traefik.http.routers.gtrifood-dashboard.tls=true"
+        - "traefik.http.routers.gtrifood-dashboard.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.gtrifood-dashboard.priority=1"
+        - "traefik.http.services.gtrifood-dashboard.loadbalancer.server.port=8501"
+
+networks:
+  network_public:
+    external: true

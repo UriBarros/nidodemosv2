@@ -9,6 +9,7 @@ OpenAPI/Swagger UI:
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -30,11 +31,16 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
+# Root path pro Swagger/OpenAPI funcionar atrás de proxy (Traefik StripPrefix).
+# Ex: API_ROOT_PATH=/api → docs em https://host/api/docs com URLs corretas.
+_root_path = os.getenv("API_ROOT_PATH", "")
+
 app = FastAPI(
     title="gtrifood API",
     version=__version__,
     description="API REST do gtrifood — dados iFood Developer para dashboards.",
     lifespan=lifespan,
+    root_path=_root_path,
 )
 
 # CORS — abre tudo no MVP local. Em prod, restringir origins.
