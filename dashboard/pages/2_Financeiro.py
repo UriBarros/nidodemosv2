@@ -15,8 +15,10 @@ import streamlit as st  # noqa: E402
 
 from dashboard.auth import render_sidebar_user, require_auth  # noqa: E402
 from dashboard.lib import api_get, api_post, check_api_health, merchant_selector  # noqa: E402
+from dashboard.theme import apply_theme  # noqa: E402
 
 st.set_page_config(page_title="Financeiro | gtrifood", page_icon="💰", layout="wide")
+apply_theme()
 st.title("Financeiro")
 
 if not check_api_health():

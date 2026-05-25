@@ -19,6 +19,7 @@ from dashboard.auth import (  # noqa: E402
     render_sidebar_user,
 )
 from dashboard.lib import api_get, api_post, check_api_health  # noqa: E402
+from dashboard.theme import apply_theme  # noqa: E402
 
 st.set_page_config(
     page_title="gtrifood",
@@ -26,6 +27,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+apply_theme()
 
 st.title("gtrifood")
 st.caption("Painel de dados iFood Developer — dados unificados de pedidos, financeiro e reviews.")
