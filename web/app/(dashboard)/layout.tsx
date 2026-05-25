@@ -12,7 +12,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
+    let supabase: ReturnType<typeof createClient>;
+    try {
+      supabase = createClient();
+    } catch {
+      // Env vars missing (build sem secrets) → manda pro login com mensagem
+      router.replace("/login");
+      return;
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) {
         router.replace("/login");

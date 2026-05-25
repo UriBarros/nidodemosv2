@@ -21,8 +21,12 @@ export function AppSidebar({ userEmail }: { userEmail?: string | null }) {
   const router = useRouter();
 
   async function handleSignOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch {
+      // ignore — still redirect to login
+    }
     router.push("/login");
     router.refresh();
   }
