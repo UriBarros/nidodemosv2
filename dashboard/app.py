@@ -107,3 +107,18 @@ st.markdown(
     - **Reviews** — avaliações dos clientes
     """
 )
+
+# Footer com links legais (visível em qualquer estado de auth)
+st.divider()
+st.markdown(
+    """
+    <div style='text-align:center; color:#6b7280; font-size:0.85rem; padding:1rem 0;'>
+        <a href='/Privacidade' target='_self' style='color:#6b7280; text-decoration:none; margin:0 0.5rem;'>Política de Privacidade</a>
+        ·
+        <a href='/Termos' target='_self' style='color:#6b7280; text-decoration:none; margin:0 0.5rem;'>Termos de Uso</a>
+        ·
+        <span style='margin:0 0.5rem;'>© 2026 ACELERADORA GTR</span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
