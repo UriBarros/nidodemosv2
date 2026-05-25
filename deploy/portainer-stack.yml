@@ -60,7 +60,7 @@ services:
         - "traefik.http.routers.gtrifood-api.rule=Host(`gtrifood.aceleradoragtr.cloud`) && PathPrefix(`/api`)"
         - "traefik.http.routers.gtrifood-api.entrypoints=websecure"
         - "traefik.http.routers.gtrifood-api.tls=true"
-        - "traefik.http.routers.gtrifood-api.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.gtrifood-api.tls.certresolver=letsencryptresolver"
         - "traefik.http.routers.gtrifood-api.priority=10"
         - "traefik.http.middlewares.gtrifood-api-strip.stripprefix.prefixes=/api"
         - "traefik.http.routers.gtrifood-api.middlewares=gtrifood-api-strip"
@@ -122,7 +122,7 @@ services:
         - "traefik.http.routers.gtrifood-dashboard.rule=Host(`gtrifood.aceleradoragtr.cloud`)"
         - "traefik.http.routers.gtrifood-dashboard.entrypoints=websecure"
         - "traefik.http.routers.gtrifood-dashboard.tls=true"
-        - "traefik.http.routers.gtrifood-dashboard.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.gtrifood-dashboard.tls.certresolver=letsencryptresolver"
         - "traefik.http.routers.gtrifood-dashboard.priority=1"
         - "traefik.http.services.gtrifood-dashboard.loadbalancer.server.port=8501"
 
