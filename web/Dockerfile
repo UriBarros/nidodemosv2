@@ -6,7 +6,8 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+# Usa npm ci se lockfile existe (build determinístico), senão npm install
+RUN if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
 
 # ----- builder ---------------------------------------------------------------
 FROM node:20-alpine AS builder
