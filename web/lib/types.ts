@@ -1,0 +1,74 @@
+// Tipos espelhando os schemas Pydantic da API FastAPI.
+// Em sync com src/gtrifood/api/schemas.py.
+
+export type Merchant = {
+  id: string;
+  ifood_merchant_id: string;
+  name: string;
+  corporate_name: string | null;
+  cnpj: string | null;
+  status: string;
+  created_at: string;
+};
+
+export type Order = {
+  id: string;
+  merchant_id: string;
+  ifood_order_id: string;
+  display_id: string | null;
+  status: OrderStatus;
+  order_type: string | null;
+  created_at_ifood: string | null;
+  total_amount: string | null; // Decimal vem como string
+  customer_name: string | null;
+  synced_at: string;
+  updated_at: string;
+};
+
+export type OrderEvent = {
+  id: string;
+  ifood_event_id: string;
+  ifood_order_id: string | null;
+  code: string;
+  full_code: string | null;
+  acknowledged_at: string | null;
+  received_at: string;
+};
+
+export type FinancialEvent = {
+  id: string;
+  merchant_id: string;
+  event_type: "SALE" | "ANTICIPATION" | "OCCURRENCE" | "ADJUSTMENT";
+  competence_date: string | null;
+  amount: string;
+  description: string | null;
+  synced_at: string;
+};
+
+export type Review = {
+  id: string;
+  merchant_id: string;
+  ifood_review_id: string;
+  score: number | null;
+  comment: string | null;
+  customer_name: string | null;
+  answered: boolean;
+  answer_text: string | null;
+  created_at_ifood: string | null;
+};
+
+export type OrderStatus =
+  | "PLACED"
+  | "CONFIRMED"
+  | "READY_FOR_PICKUP"
+  | "DISPATCHED"
+  | "ARRIVED"
+  | "CONCLUDED"
+  | "CANCELLATION_REQUESTED"
+  | "CANCELLATION_REQUEST_ACCEPTED"
+  | "CANCELLATION_REQUEST_DENIED"
+  | "CANCELLED"
+  | string; // permite valores inesperados
+
+export type Count = { count: number };
+export type ActionResult = { message: string };
