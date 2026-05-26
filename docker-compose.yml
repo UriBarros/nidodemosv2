@@ -34,27 +34,3 @@ services:
       api:
         condition: service_healthy
     command: ["python", "scripts/run_poller.py"]
-
-  dashboard:
-    image: gtrifood:latest
-    container_name: gtrifood-dashboard
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      # Streamlit fala com api pelo nome do serviço dentro da rede do compose
-      API_BASE_URL: "http://api:8000"
-    depends_on:
-      api:
-        condition: service_healthy
-    ports:
-      - "8501:8501"
-    command:
-      [
-        "streamlit",
-        "run",
-        "dashboard/app.py",
-        "--server.port=8501",
-        "--server.address=0.0.0.0",
-        "--server.headless=true",
-        "--browser.gatherUsageStats=false",
-      ]

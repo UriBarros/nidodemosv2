@@ -54,16 +54,18 @@ python scripts/run_poller.py
 uvicorn gtrifood.api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-**Terminal 3 — Dashboard Streamlit:**
+**Terminal 3 — Frontend Next.js:**
 ```powershell
-streamlit run dashboard/app.py
+cd web
+npm install   # primeira vez só
+npm run dev
 ```
 
-Streamlit abre o navegador automático. Senão: http://localhost:8501
+Abre: http://localhost:3000
 
 ### 5. Usa o sistema
 
-Login com sua conta → dashboard funciona.
+Login com sua conta → dashboard Next.js funciona.
 
 ## Pra parar no fim do dia
 
@@ -114,11 +116,10 @@ E:\gtrifood\
 │   ├── models/           ← SQLAlchemy models
 │   ├── services/         ← lógica de sync
 │   └── workers/          ← poller de eventos
-├── dashboard/            ← Streamlit
-│   ├── app.py            ← home (login + métricas)
-│   ├── auth.py           ← integração Supabase Auth
-│   ├── lib.py            ← helpers HTTP
-│   └── pages/            ← Pedidos, Financeiro, Reviews
+├── web/                  ← Next.js 14 frontend
+│   ├── app/              ← App Router (login, dashboard, legal)
+│   ├── components/       ← shadcn + custom (sidebar, KPI cards)
+│   └── lib/              ← supabase client, api wrapper
 ├── scripts/              ← scripts utilitários
 ├── supabase/migrations/  ← SQL do banco
 └── docs/                 ← documentação interna

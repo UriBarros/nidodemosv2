@@ -28,7 +28,7 @@
                          │
                          ▼
 ┌──────────────────────────────────────────────────────────────┐
-│   Streamlit dashboard (MVP) → Next.js depois                  │
+│   Next.js 14 frontend (App Router + shadcn/ui)                │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -51,13 +51,14 @@
 - `events_poller.py` — loop infinito de polling de eventos (30s).
 
 ### 4. API (`src/gtrifood/api/`)
-- FastAPI. Expõe dados para o dashboard.
+- FastAPI. Expõe dados para o frontend.
 - Auth via Supabase JWT.
 - Routes por domínio: merchants, orders, financial, reviews.
 
-### 5. Dashboard (`dashboard/`)
-- Streamlit (MVP).
-- Login Supabase → seleciona merchant → vê páginas.
+### 5. Frontend (`web/`)
+- Next.js 14 (App Router) + shadcn/ui + Tailwind + TanStack Query.
+- Login Supabase → seleciona merchant → vê páginas (Pedidos, Financeiro, Reviews).
+- Bundle standalone Docker, servido em `gtrifood.aceleradoragtr.cloud/`.
 
 ### 6. Database (Supabase Postgres)
 - Multi-tenant via `tenant_id` em toda tabela.
@@ -82,6 +83,6 @@ Hoje (teste): 1 tenant interno + 1 merchant fictício do iFood.
 
 - **Python FastAPI**: ecossistema forte pra ETL e dados; async nativo; tipagem com pydantic.
 - **Supabase**: Postgres + Auth + RLS prontos. Acelera MVP. Sem custo inicial alto.
-- **Streamlit (MVP)**: dashboard em Python puro, mesmo pessoal pode iterar. Migra pra Next.js quando UI ficar crítica.
+- **Next.js 14 + shadcn/ui**: frontend produção com SSR/SSG, App Router e tipagem ponta-a-ponta. Streamlit foi MVP, foi removido depois que UI ficou crítica.
 - **httpx async**: chamadas paralelas a múltiplos merchants em produção; melhor que requests sync.
 - **Polling de eventos** (não webhook) no início: app de teste não tem URL pública; polling funciona em qualquer ambiente.

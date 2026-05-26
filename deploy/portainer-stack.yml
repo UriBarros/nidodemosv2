@@ -4,7 +4,6 @@
 # Routing:
 #   gtrifood.aceleradoragtr.cloud/         → Next.js (web)
 #   gtrifood.aceleradoragtr.cloud/api      → FastAPI (api)
-#   gtrifood.aceleradoragtr.cloud/admin    → Streamlit (dashboard) — interno
 # =============================================================================
 version: "3.8"
 
@@ -73,41 +72,6 @@ services:
     deploy:
       replicas: 1
       restart_policy: { condition: any, delay: 10s }
-
-  dashboard:
-    # Streamlit interno (admin/debug) — fica em /admin
-    image: ghcr.io/uribarros/nidodemosv2:latest
-    environment:
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
-      API_BASE_URL: http://gtrifood_api:8000
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    command:
-      - streamlit
-      - run
-      - dashboard/app.py
-      - --server.port=8501
-      - --server.address=0.0.0.0
-      - --server.headless=true
-      - --server.baseUrlPath=admin
-      - --server.enableCORS=false
-      - --server.enableXsrfProtection=false
-      - --browser.gatherUsageStats=false
-    networks:
-      - network_public
-    deploy:
-      replicas: 1
-      restart_policy: { condition: any, delay: 5s }
-      update_config: { order: start-first }
-      labels:
-        - "traefik.enable=true"
-        - "traefik.docker.network=network_public"
-        - "traefik.http.routers.gtrifood-admin.rule=Host(`gtrifood.aceleradoragtr.cloud`) && PathPrefix(`/admin`)"
-        - "traefik.http.routers.gtrifood-admin.entrypoints=websecure"
-        - "traefik.http.routers.gtrifood-admin.tls=true"
-        - "traefik.http.routers.gtrifood-admin.tls.certresolver=letsencryptresolver"
-        - "traefik.http.routers.gtrifood-admin.priority=15"
-        - "traefik.http.services.gtrifood-admin.loadbalancer.server.port=8501"
 
   web:
     image: ghcr.io/uribarros/nidodemosv2-web:latest

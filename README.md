@@ -27,7 +27,7 @@ gtrifood/
 │   ├── services/         # lógica de sync (orders, financial, reviews)
 │   ├── models/           # pydantic + SQLAlchemy
 │   └── workers/          # polling de eventos
-├── dashboard/            # Streamlit app
+├── web/                  # Next.js 14 frontend (App Router + shadcn)
 ├── scripts/              # scripts utilitários (testar auth, etc)
 ├── supabase/migrations/  # SQL migrations
 ├── tests/
@@ -83,8 +83,8 @@ Espera-se: `access_token` impresso + lista do merchant de teste.
 # API
 uvicorn gtrifood.api.main:app --reload
 
-# Dashboard
-streamlit run dashboard/app.py
+# Frontend (Next.js)
+cd web && npm run dev
 ```
 
 ## Documentação interna

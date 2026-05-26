@@ -1,6 +1,6 @@
 # =============================================================================
-# gtrifood — imagem única servindo API, worker e dashboard.
-# O serviço escolhido roda via `command:` do docker-compose.
+# gtrifood — imagem única servindo API e worker.
+# O serviço escolhido roda via `command:` do docker-compose / stack Portainer.
 # =============================================================================
 FROM python:3.11-slim AS base
 
@@ -27,14 +27,13 @@ RUN python -m venv .venv \
 
 # Código depois (invalida cache só quando muda)
 COPY src ./src
-COPY dashboard ./dashboard
 COPY scripts ./scripts
 COPY supabase ./supabase
 
 # Reinstala em modo editable agora que src/ existe (para registrar pacote)
 RUN .venv/bin/pip install -e .
 
-EXPOSE 8000 8501
+EXPOSE 8000
 
-# Default = API. Sobrescrito no docker-compose para worker/dashboard.
+# Default = API. Sobrescrito no docker-compose / stack Portainer para worker.
 CMD ["uvicorn", "gtrifood.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
