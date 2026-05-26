@@ -2,10 +2,15 @@
 
 Centraliza headers, base URL, autenticação e tratamento de erros.
 Módulos específicos (merchants, orders, financial, reviews) usam esse cliente.
+
+Auth modes:
+- Default (client_credentials): usa IFoodAuthClient — modelo Centralizada.
+- Per-client token (modelo Distribuída): passar `token_provider` no init.
 """
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx
@@ -13,6 +18,8 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from gtrifood.config import Settings, get_settings
 from gtrifood.integrations.ifood.auth import IFoodAuthClient
+
+TokenProvider = Callable[[], Awaitable[str]]
 
 
 class IFoodAPIError(Exception):
@@ -31,12 +38,23 @@ class IFoodClient:
         self,
         settings: Settings | None = None,
         auth: IFoodAuthClient | None = None,
+        token_provider: TokenProvider | None = None,
     ) -> None:
         self._settings = settings or get_settings()
-        self._auth = auth or IFoodAuthClient(self._settings)
+        self._token_provider = token_provider
+        # Fallback pra client_credentials se nenhum token_provider foi passado
+        self._auth = auth or (
+            IFoodAuthClient(self._settings) if token_provider is None else None
+        )
+
+    async def _get_token(self) -> str:
+        if self._token_provider is not None:
+            return await self._token_provider()
+        assert self._auth is not None, "IFoodClient sem token_provider precisa de auth"
+        return await self._auth.get_token()
 
     async def _headers(self) -> dict[str, str]:
-        token = await self._auth.get_token()
+        token = await self._get_token()
         return {
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
