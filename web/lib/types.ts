@@ -72,3 +72,51 @@ export type OrderStatus =
 
 export type Count = { count: number };
 export type ActionResult = { message: string };
+
+// =============================================================================
+// Modelo agência: clients + userCode flow
+// =============================================================================
+export type ClientStatus = "pending" | "connected" | "disconnected" | "error";
+
+export type Client = {
+  id: string;
+  name: string;
+  legal_name: string | null;
+  cnpj: string | null;
+  phone: string | null;
+  email: string | null;
+  notes: string | null;
+  status: ClientStatus;
+  connected_at: string | null;
+  disconnected_at: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ClientIn = {
+  name: string;
+  legal_name?: string;
+  cnpj?: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+};
+
+export type UserCodeSession = {
+  id: string;
+  client_id: string | null;
+  user_code: string;
+  verification_url: string;
+  verification_url_complete: string | null;
+  expires_at: string;
+  status: "pending" | "authorized" | "expired" | "error";
+  poll_count: number;
+};
+
+export type UserCodePoll = {
+  session_id: string;
+  status: "pending" | "authorized" | "expired" | "error";
+  message: string | null;
+  client_status: ClientStatus | null;
+};

@@ -41,6 +41,18 @@ export async function apiGet<T>(
   return (await res.json()) as T;
 }
 
+export async function apiDelete(path: string): Promise<void> {
+  const url = new URL(`${PUBLIC_BASE}${path}`, window.location.origin);
+  const res = await fetch(url.toString(), {
+    method: "DELETE",
+    headers: { ...(await authHeaders()) },
+  });
+  if (!res.ok && res.status !== 204) {
+    const body = await res.text().catch(() => "");
+    throw new ApiError(res.status, `DELETE ${path} → ${res.status}`, body);
+  }
+}
+
 export async function apiPost<T>(
   path: string,
   body?: unknown,
