@@ -182,12 +182,25 @@ class IFoodUserCodeClient:
         if response.status_code == 200:
             return self._parse_token(response.json())
 
-        # iFood usa códigos de erro custom no body (não OAuth2 RFC)
+        # iFood usa códigos de erro custom no body (não segue RFC OAuth2 device flow).
+        # Observações empíricas com app Distribuído de TEST:
+        # - Enquanto lojista NÃO autorizou: 401 Unauthorized com
+        #   {"error":{"code":"Unauthorized","message":"Invalid authorization code XXX"}}
+        # - Após autorizar: 200 com tokens
+        # - Após expirar: 410 Gone ou 400 com "expired" no body
         body = response.text.lower()
-        if "pending" in body or response.status_code == 428:
-            raise AuthorizationPending("Lojista ainda não autorizou.")
+
         if "expired" in body or response.status_code == 410:
             raise AuthorizationExpired("userCode expirou. Iniciar nova sessão.")
+
+        # 401 + "invalid authorization code" do iFood = lojista ainda não autorizou
+        # (counter-intuitivo, mas é como a API se comporta).
+        if response.status_code == 401 and "invalid authorization code" in body:
+            raise AuthorizationPending("Lojista ainda não autorizou no Portal iFood.")
+
+        if "pending" in body or response.status_code == 428:
+            raise AuthorizationPending("Lojista ainda não autorizou.")
+
         if response.status_code in (400, 401):
             raise InvalidGrant(f"authorization_code inválido: {response.text}")
 
