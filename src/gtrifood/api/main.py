@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from gtrifood import __version__
-from gtrifood.api.routes import financial, health, merchants, orders, reviews
+from gtrifood.api.routes import clients, financial, health, merchants, orders, reviews
 from gtrifood.core.asyncio_compat import setup_event_loop
 from gtrifood.core.logging import configure_logging
 
@@ -53,6 +53,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(clients.router)
 app.include_router(merchants.router)
 app.include_router(orders.router)
 app.include_router(financial.router)

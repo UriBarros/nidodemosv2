@@ -96,7 +96,12 @@ class Merchant(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    client_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE")
+    )
+
     tenant: Mapped[Tenant] = relationship(back_populates="merchants")
+    client: Mapped["Client | None"] = relationship(back_populates="merchants")
     __table_args__ = (UniqueConstraint("tenant_id", "ifood_merchant_id"),)
 
 
@@ -210,3 +215,63 @@ class SyncState(Base):
     last_error: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (CheckConstraint("domain in ('orders', 'financial', 'reviews')"),)
+
+
+class Client(Base):
+    __tablename__ = "clients"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    legal_name: Mapped[str | None] = mapped_column(Text)
+    cnpj: Mapped[str | None] = mapped_column(Text)
+    phone: Mapped[str | None] = mapped_column(Text)
+    email: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
+    # Tokens userCode (cifrados com Fernet)
+    refresh_token_encrypted: Mapped[str | None] = mapped_column(Text)
+    access_token_encrypted: Mapped[str | None] = mapped_column(Text)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    token_scope: Mapped[str | None] = mapped_column(Text)
+    # Auditoria
+    connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    disconnected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    merchants: Mapped[list["Merchant"]] = relationship(back_populates="client")
+
+    __table_args__ = (
+        CheckConstraint("status in ('pending', 'connected', 'disconnected', 'error')"),
+    )
+
+
+class UserCodeSession(Base):
+    __tablename__ = "user_code_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    client_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE")
+    )
+    user_code: Mapped[str] = mapped_column(Text, nullable=False)
+    verification_url: Mapped[str] = mapped_column(Text, nullable=False)
+    verification_url_complete: Mapped[str | None] = mapped_column(Text)
+    authorization_code_verifier: Mapped[str | None] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
+    last_polled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    poll_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("status in ('pending', 'authorized', 'expired', 'error')"),
+    )

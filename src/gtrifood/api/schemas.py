@@ -87,3 +87,59 @@ class CountOut(BaseModel):
 class SyncResultOut(BaseModel):
     inserted: int
     message: str
+
+
+# =============================================================================
+# Clients (modelo agência)
+# =============================================================================
+class ClientIn(BaseModel):
+    """Payload pra criar/atualizar um cliente lojista."""
+
+    name: str
+    legal_name: str | None = None
+    cnpj: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    notes: str | None = None
+
+
+class ClientOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    legal_name: str | None
+    cnpj: str | None
+    phone: str | None
+    email: str | None
+    notes: str | None
+    status: str
+    connected_at: datetime | None
+    disconnected_at: datetime | None
+    last_error: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class UserCodeSessionOut(BaseModel):
+    """Resposta ao iniciar sessão userCode pra um cliente."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    client_id: uuid.UUID | None
+    user_code: str
+    verification_url: str
+    verification_url_complete: str | None
+    expires_at: datetime
+    status: str
+    poll_count: int
+
+
+class UserCodePollOut(BaseModel):
+    """Resposta do polling — status atual + tokens (se autorizado)."""
+
+    session_id: uuid.UUID
+    status: str                              # pending | authorized | expired | error
+    message: str | None = None
+    client_status: str | None = None         # status do client após poll
