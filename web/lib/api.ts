@@ -36,7 +36,14 @@ export async function apiGet<T>(
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new ApiError(res.status, `GET ${path} → ${res.status}`, body);
+    let msg = `GET ${path} → ${res.status}`;
+    try {
+      const j = JSON.parse(body);
+      if (j?.detail) msg = String(j.detail);
+    } catch {
+      // body não é JSON
+    }
+    throw new ApiError(res.status, msg, body);
   }
   return (await res.json()) as T;
 }
@@ -74,7 +81,15 @@ export async function apiPost<T>(
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new ApiError(res.status, `POST ${path} → ${res.status}`, text);
+    // Tenta extrair "detail" do JSON do FastAPI (HTTPException padrão)
+    let msg = `POST ${path} → ${res.status}`;
+    try {
+      const j = JSON.parse(text);
+      if (j?.detail) msg = String(j.detail);
+    } catch {
+      // body não é JSON, mantém msg genérica
+    }
+    throw new ApiError(res.status, msg, text);
   }
   const text = await res.text();
   return (text ? JSON.parse(text) : null) as T;

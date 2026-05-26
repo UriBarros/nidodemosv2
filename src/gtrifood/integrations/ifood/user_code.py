@@ -90,39 +90,68 @@ class IFoodUserCodeClient:
     def _base_url(self) -> str:
         return self._settings.ifood_auth_url.rsplit("/oauth/", 1)[0]
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        reraise=True,
-    )
     async def start(self) -> UserCodeStart:
-        """Inicia uma sessão userCode. Retorna o código que o lojista deve usar."""
+        """Inicia uma sessão userCode. Retorna o código que o lojista deve usar.
+
+        Não usa retry em 4xx (erro de cliente — retry não resolve, só esconde causa).
+        Retry só em erros transitórios (5xx, timeout, transport).
+        """
         url = f"{self._base_url}/oauth/userCode"
         data = {
             "clientId": self._settings.ifood_client_id.get_secret_value(),
         }
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                url,
-                data=data,
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
+        # Retry só transient errors (não 4xx)
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.post(
+                        url,
+                        data=data,
+                        headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    )
+            except (httpx.TransportError, httpx.TimeoutException) as exc:
+                if attempt == 2:
+                    raise IFoodUserCodeError(f"timeout/transport iFood: {exc}") from exc
+                continue
+
+            # 4xx: erro permanente, não retry
+            if 400 <= response.status_code < 500:
+                # Tenta extrair detalhes do body do iFood
+                try:
+                    body = response.json()
+                    detail = (
+                        body.get("error_description")
+                        or body.get("error")
+                        or body.get("message")
+                        or response.text
+                    )
+                except Exception:
+                    detail = response.text
+                raise IFoodUserCodeError(
+                    f"iFood rejeitou userCode [{response.status_code}]: {detail}"
+                )
+
+            # 5xx: retry
+            if response.status_code >= 500:
+                if attempt == 2:
+                    raise IFoodUserCodeError(
+                        f"iFood instável [{response.status_code}]: {response.text}"
+                    )
+                continue
+
+            # 200: sucesso
+            payload = response.json()
+            return UserCodeStart(
+                user_code=payload["userCode"],
+                verification_url=payload["verificationUrl"],
+                verification_url_complete=payload.get(
+                    "verificationUrlComplete", payload["verificationUrl"]
+                ),
+                authorization_code_verifier=payload["authorizationCodeVerifier"],
+                expires_in=int(payload.get("expiresIn", 600)),
             )
 
-        if response.status_code != 200:
-            raise IFoodUserCodeError(
-                f"start userCode falhou [{response.status_code}]: {response.text}"
-            )
-
-        payload = response.json()
-        return UserCodeStart(
-            user_code=payload["userCode"],
-            verification_url=payload["verificationUrl"],
-            verification_url_complete=payload.get(
-                "verificationUrlComplete", payload["verificationUrl"]
-            ),
-            authorization_code_verifier=payload["authorizationCodeVerifier"],
-            expires_in=int(payload.get("expiresIn", 600)),
-        )
+        raise IFoodUserCodeError("start userCode falhou após 3 tentativas")
 
     async def poll(
         self,

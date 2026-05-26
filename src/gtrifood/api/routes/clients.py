@@ -244,7 +244,9 @@ async def _start_user_code_session(
     try:
         start = await ifood.start()
     except IFoodUserCodeError as exc:
-        raise HTTPException(502, f"falha ao iniciar userCode no iFood: {exc}") from exc
+        # 400 (em vez de 502) — erro de configuração/permissão do iFood,
+        # não problema de rede. Mensagem do iFood vai pro frontend.
+        raise HTTPException(400, f"iFood não autorizou: {exc}") from exc
 
     now = datetime.now(timezone.utc)
     session_obj = UserCodeSession(
