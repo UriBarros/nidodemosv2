@@ -81,6 +81,7 @@ export type ClientStatus = "pending" | "connected" | "disconnected" | "error";
 export type Client = {
   id: string;
   name: string;
+  ifood_merchant_id: string | null;
   legal_name: string | null;
   cnpj: string | null;
   phone: string | null;
@@ -96,6 +97,7 @@ export type Client = {
 
 export type ClientIn = {
   name: string;
+  ifood_merchant_id?: string;
   legal_name?: string;
   cnpj?: string;
   phone?: string;

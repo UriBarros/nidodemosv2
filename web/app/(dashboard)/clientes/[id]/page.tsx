@@ -139,6 +139,7 @@ export default function ClienteDetailPage() {
         </CardHeader>
         <CardContent>
           <dl className="grid gap-3 sm:grid-cols-2">
+            <Field label="ID iFood" value={client.ifood_merchant_id} mono />
             <Field label="CNPJ" value={client.cnpj} mono />
             <Field label="Telefone" value={client.phone} />
             <Field label="E-mail" value={client.email} />

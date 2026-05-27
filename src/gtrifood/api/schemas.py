@@ -96,6 +96,7 @@ class ClientIn(BaseModel):
     """Payload pra criar/atualizar um cliente lojista."""
 
     name: str
+    ifood_merchant_id: str | None = None  # UUID iFood — operador cola do Portal Gestor
     legal_name: str | None = None
     cnpj: str | None = None
     phone: str | None = None
@@ -108,6 +109,7 @@ class ClientOut(BaseModel):
 
     id: uuid.UUID
     name: str
+    ifood_merchant_id: str | None
     legal_name: str | None
     cnpj: str | None
     phone: str | None

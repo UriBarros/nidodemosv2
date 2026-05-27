@@ -230,6 +230,7 @@ class Client(Base):
     phone: Mapped[str | None] = mapped_column(Text)
     email: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    ifood_merchant_id: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
     # Tokens userCode (cifrados com Fernet)
     refresh_token_encrypted: Mapped[str | None] = mapped_column(Text)

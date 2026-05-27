@@ -34,6 +34,7 @@ from gtrifood.integrations.ifood.user_code import (
     InvalidGrant,
 )
 from gtrifood.models.db import Client, UserCodeSession
+from gtrifood.services.merchants_sync import sync_merchant_for_client
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 
@@ -86,6 +87,7 @@ async def create_client(
     client = Client(
         tenant_id=tenant_id,
         name=payload.name,
+        ifood_merchant_id=payload.ifood_merchant_id,
         legal_name=payload.legal_name,
         cnpj=payload.cnpj,
         phone=payload.phone,
@@ -211,10 +213,25 @@ async def poll_client_authorization(
     session_obj.completed_at = now
 
     await db.commit()
+
+    # Auto-sync do merchant após autorização (best-effort, não bloqueia resposta)
+    sync_msg = "Cliente conectado com sucesso."
+    try:
+        synced = await sync_merchant_for_client(
+            tenant_id=tenant_id,
+            client_id=client.id,
+            ifood_merchant_id=client.ifood_merchant_id,
+        )
+        if synced > 0:
+            sync_msg = f"Cliente conectado. {synced} merchant(s) sincronizado(s)."
+    except Exception as exc:  # noqa: BLE001
+        # Não derruba o flow — autorização ok, sync pode tentar de novo depois
+        sync_msg = f"Cliente conectado, mas falha no sync: {exc}"
+
     return UserCodePollOut(
         session_id=session_obj.id,
         status="authorized",
-        message="Cliente conectado com sucesso.",
+        message=sync_msg,
         client_status=client.status,
     )
 

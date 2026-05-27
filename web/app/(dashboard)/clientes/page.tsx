@@ -96,9 +96,8 @@ export default function ClientesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Nome</TableHead>
+                  <TableHead>Restaurante / ID iFood</TableHead>
                   <TableHead>CNPJ</TableHead>
-                  <TableHead>Telefone</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Conectado em</TableHead>
                 </TableRow>
@@ -115,16 +114,15 @@ export default function ClientesPage() {
                         >
                           {c.name}
                         </Link>
-                        {c.legal_name && (
-                          <div className="text-xs text-muted-foreground">
-                            {c.legal_name}
+                        {c.ifood_merchant_id && (
+                          <div className="font-mono text-xs text-muted-foreground">
+                            {c.ifood_merchant_id}
                           </div>
                         )}
                       </TableCell>
                       <TableCell className="font-mono text-sm">
                         {c.cnpj || "—"}
                       </TableCell>
-                      <TableCell>{c.phone || "—"}</TableCell>
                       <TableCell>
                         <Badge variant={s.variant}>{s.label}</Badge>
                       </TableCell>
