@@ -3,20 +3,52 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, RefreshCw, Trash2, Zap } from "lucide-react";
+import {
+  ArrowLeft,
+  Loader2,
+  MessageSquare,
+  RefreshCw,
+  ShoppingBag,
+  Star,
+  Store,
+  Trash2,
+  TrendingUp,
+  Wallet,
+  Zap,
+} from "lucide-react";
 import { toast } from "sonner";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
-import type { Client, UserCodeSession } from "@/lib/types";
+import { formatCurrency } from "@/lib/utils";
+import type { Client, Merchant, UserCodeSession } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { StatCard } from "@/components/stat-card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
-const STATUS_LABEL: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+const STATUS_LABEL: Record<
+  string,
+  { label: string; variant: "default" | "secondary" | "destructive" | "outline" }
+> = {
   pending: { label: "Aguardando autorização", variant: "outline" },
   connected: { label: "Conectado", variant: "default" },
   disconnected: { label: "Desconectado", variant: "secondary" },
   error: { label: "Erro", variant: "destructive" },
+};
+
+type ReviewsSummary = {
+  total: number;
+  average_score: number;
+  answered_count: number;
+  answered_pct: number;
 };
 
 export default function ClienteDetailPage() {
@@ -25,6 +57,12 @@ export default function ClienteDetailPage() {
   const clientId = params.id;
 
   const [client, setClient] = useState<Client | null>(null);
+  const [merchants, setMerchants] = useState<Merchant[]>([]);
+  const [ordersTotal, setOrdersTotal] = useState<number | null>(null);
+  const [ordersPlaced, setOrdersPlaced] = useState<number | null>(null);
+  const [financial, setFinancial] = useState<Record<string, number>>({});
+  const [reviews, setReviews] = useState<ReviewsSummary | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [reconnecting, setReconnecting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -32,10 +70,27 @@ export default function ClienteDetailPage() {
   async function load() {
     setLoading(true);
     try {
-      const data = await apiGet<Client>(`/clients/${clientId}`);
-      setClient(data);
+      const [c, m, ot, op, fs, rs] = await Promise.all([
+        apiGet<Client>(`/clients/${clientId}`),
+        apiGet<Merchant[]>("/merchants", { client_id: clientId }),
+        apiGet<{ count: number }>("/orders/count", { client_id: clientId }),
+        apiGet<{ count: number }>("/orders/count", {
+          client_id: clientId,
+          status: "PLACED",
+        }),
+        apiGet<Record<string, number>>("/financial/summary", {
+          client_id: clientId,
+        }),
+        apiGet<ReviewsSummary>("/reviews/summary", { client_id: clientId }),
+      ]);
+      setClient(c);
+      setMerchants(m);
+      setOrdersTotal(ot.count);
+      setOrdersPlaced(op.count);
+      setFinancial(fs);
+      setReviews(rs);
     } catch (e: any) {
-      toast.error(e?.message ?? "Falha ao carregar cliente");
+      toast.error(e?.message ?? "Falha ao carregar dados do cliente");
     } finally {
       setLoading(false);
     }
@@ -43,17 +98,23 @@ export default function ClienteDetailPage() {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
 
   async function reconnect() {
-    if (!confirm("Gerar novo código de autorização? O lojista terá que autorizar de novo.")) {
+    if (
+      !confirm(
+        "Gerar novo código de autorização? O lojista terá que autorizar de novo.",
+      )
+    )
       return;
-    }
     setReconnecting(true);
     try {
-      const sess = await apiPost<UserCodeSession>(`/clients/${clientId}/connect`, {});
+      const sess = await apiPost<UserCodeSession>(
+        `/clients/${clientId}/connect`,
+        {},
+      );
       toast.success(`Novo código: ${sess.user_code}`);
-      // Redirect pro fluxo de connect — usa novo (poderíamos ter URL própria)
       router.push("/clientes/novo?reconnecting=" + clientId);
     } catch (e: any) {
       toast.error(e?.message ?? "Falha ao reconectar");
@@ -63,9 +124,12 @@ export default function ClienteDetailPage() {
   }
 
   async function remove() {
-    if (!confirm("Remover cliente? Isso apaga TODOS os pedidos e dados dele permanentemente.")) {
+    if (
+      !confirm(
+        "Remover cliente? Isso apaga TODOS os pedidos e dados dele permanentemente.",
+      )
+    )
       return;
-    }
     setDeleting(true);
     try {
       await apiDelete(`/clients/${clientId}`);
@@ -77,7 +141,7 @@ export default function ClienteDetailPage() {
     }
   }
 
-  if (loading) {
+  if (loading && !client) {
     return (
       <div className="flex justify-center py-12">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -87,6 +151,9 @@ export default function ClienteDetailPage() {
   if (!client) return null;
 
   const s = STATUS_LABEL[client.status] ?? STATUS_LABEL.pending;
+  const totalSales = financial.SALE ?? 0;
+  const avgTicket =
+    ordersTotal && ordersTotal > 0 ? totalSales / ordersTotal : 0;
 
   return (
     <div className="space-y-6">
@@ -108,8 +175,10 @@ export default function ClienteDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={load}>
-            <RefreshCw className="h-4 w-4" />
+          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+            <RefreshCw
+              className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+            />
             Atualizar
           </Button>
           <Button
@@ -133,6 +202,89 @@ export default function ClienteDetailPage() {
         </div>
       </div>
 
+      {/* ===== KPIs ===== */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Pedidos"
+          value={ordersTotal ?? "—"}
+          icon={ShoppingBag}
+          hint={
+            ordersPlaced !== null && ordersPlaced > 0
+              ? `${ordersPlaced} em aberto`
+              : undefined
+          }
+        />
+        <StatCard
+          label="Vendas"
+          value={formatCurrency(totalSales)}
+          icon={Wallet}
+          tone="success"
+        />
+        <StatCard
+          label="Ticket médio"
+          value={formatCurrency(avgTicket)}
+          icon={TrendingUp}
+        />
+        <StatCard
+          label="Reviews"
+          value={reviews?.total ?? "—"}
+          icon={Star}
+          hint={
+            reviews && reviews.total > 0
+              ? `Média ${reviews.average_score} · ${reviews.answered_pct}% respondidas`
+              : undefined
+          }
+        />
+      </div>
+
+      {/* ===== Merchants vinculados ===== */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Store className="h-5 w-5" />
+            Restaurantes vinculados ({merchants.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {merchants.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              Nenhum merchant sincronizado ainda. Após o lojista autorizar a
+              integração no iFood, os dados aparecem aqui automaticamente.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>ID iFood</TableHead>
+                  <TableHead>CNPJ</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {merchants.map((m) => (
+                  <TableRow key={m.id}>
+                    <TableCell className="font-medium">{m.name}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {m.ifood_merchant_id}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">
+                      {m.cnpj || "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={m.status === "active" ? "default" : "secondary"}>
+                        {m.status === "active" ? "Ativo" : "Inativo"}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ===== Dados de cadastro ===== */}
       <Card>
         <CardHeader>
           <CardTitle>Dados de cadastro</CardTitle>
@@ -154,6 +306,7 @@ export default function ClienteDetailPage() {
         </CardContent>
       </Card>
 
+      {/* ===== Conexão iFood ===== */}
       <Card>
         <CardHeader>
           <CardTitle>Conexão iFood</CardTitle>
