@@ -90,8 +90,42 @@ jobs:
             NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
             NEXT_PUBLIC_API_BASE_URL=/api
 
-  deploy:
+  update-stack:
+    # Bump image tags em deploy/portainer-stack.yml para o SHA recém-buildado.
+    # Portainer (GitOps webhook) detecta o commit e faz pull+redeploy sozinho.
     needs: [build-api, build-web]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bump image tags to SHA
+        run: |
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          echo "Bumping to sha-${SHORT_SHA}"
+          sed -i -E "s|ghcr\.io/uribarros/nidodemosv2:[a-zA-Z0-9.-]+|ghcr.io/uribarros/nidodemosv2:sha-${SHORT_SHA}|g" deploy/portainer-stack.yml
+          sed -i -E "s|ghcr\.io/uribarros/nidodemosv2-web:[a-zA-Z0-9.-]+|ghcr.io/uribarros/nidodemosv2-web:sha-${SHORT_SHA}|g" deploy/portainer-stack.yml
+          echo "===== Diff ====="
+          git diff deploy/portainer-stack.yml || true
+
+      - name: Commit & push
+        run: |
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deploy/portainer-stack.yml
+          if git diff --staged --quiet; then
+            echo "Nada pra commitar (YAML já está no SHA atual)."
+            exit 0
+          fi
+          git commit -m "ci: bump image tags to sha-${SHORT_SHA} [skip ci]"
+          git push
+
+  deploy:
+    needs: update-stack
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Portainer redeploy
@@ -102,4 +136,6 @@ jobs:
             echo "PORTAINER_WEBHOOK_URL not set — skipping"
             exit 0
           fi
+          # Aguarda 5s pro Portainer ver o commit novo do YML antes do webhook
+          sleep 5
           curl -X POST "$WEBHOOK" --fail --silent --show-error
