@@ -49,6 +49,8 @@ async def reviews_summary(
     tenant_id: uuid.UUID = Depends(get_current_tenant),
     client_id: uuid.UUID | None = Query(default=None),
     merchant_id: uuid.UUID | None = Query(default=None),
+    begin: str | None = Query(default=None),
+    end: str | None = Query(default=None),
 ) -> dict[str, float | int]:
     """Métricas agregadas: total, média de score, % respondidas."""
     stmt = select(
@@ -62,6 +64,10 @@ async def reviews_summary(
         )
     if merchant_id:
         stmt = stmt.where(Review.merchant_id == merchant_id)
+    if begin:
+        stmt = stmt.where(Review.created_at_ifood >= begin)
+    if end:
+        stmt = stmt.where(Review.created_at_ifood <= end)
 
     result = (await db.execute(stmt)).one()
     total = int(result[0] or 0)

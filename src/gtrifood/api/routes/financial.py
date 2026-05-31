@@ -53,6 +53,8 @@ async def financial_summary(
     tenant_id: uuid.UUID = Depends(get_current_tenant),
     client_id: uuid.UUID | None = Query(default=None),
     merchant_id: uuid.UUID | None = Query(default=None),
+    begin: date | None = Query(default=None),
+    end: date | None = Query(default=None),
 ) -> dict[str, float]:
     """Soma agregada por tipo de evento."""
     stmt = select(FinancialEvent.event_type, func.sum(FinancialEvent.amount)).where(
@@ -64,6 +66,10 @@ async def financial_summary(
         )
     if merchant_id:
         stmt = stmt.where(FinancialEvent.merchant_id == merchant_id)
+    if begin:
+        stmt = stmt.where(FinancialEvent.competence_date >= begin)
+    if end:
+        stmt = stmt.where(FinancialEvent.competence_date <= end)
     stmt = stmt.group_by(FinancialEvent.event_type)
 
     result = await db.execute(stmt)

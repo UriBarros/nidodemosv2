@@ -33,6 +33,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DateRangeFilter,
+  presetToDateRange,
+  presetToRange,
+  type DateRangePreset,
+} from "@/components/date-range-filter";
 
 const STATUS_LABEL: Record<
   string,
@@ -63,6 +69,7 @@ export default function ClienteDetailPage() {
   const [financial, setFinancial] = useState<Record<string, number>>({});
   const [reviews, setReviews] = useState<ReviewsSummary | null>(null);
 
+  const [period, setPeriod] = useState<DateRangePreset>("30d");
   const [loading, setLoading] = useState(true);
   const [reconnecting, setReconnecting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -70,18 +77,31 @@ export default function ClienteDetailPage() {
   async function load() {
     setLoading(true);
     try {
+      const r = presetToRange(period);
+      const dr = presetToDateRange(period);
       const [c, m, ot, op, fs, rs] = await Promise.all([
         apiGet<Client>(`/clients/${clientId}`),
         apiGet<Merchant[]>("/merchants", { client_id: clientId }),
-        apiGet<{ count: number }>("/orders/count", { client_id: clientId }),
+        apiGet<{ count: number }>("/orders/count", {
+          client_id: clientId,
+          begin: r.begin,
+          end: r.end,
+        }),
+        // "Em aberto" sempre mostra o presente
         apiGet<{ count: number }>("/orders/count", {
           client_id: clientId,
           status: "PLACED",
         }),
         apiGet<Record<string, number>>("/financial/summary", {
           client_id: clientId,
+          begin: dr.begin,
+          end: dr.end,
         }),
-        apiGet<ReviewsSummary>("/reviews/summary", { client_id: clientId }),
+        apiGet<ReviewsSummary>("/reviews/summary", {
+          client_id: clientId,
+          begin: r.begin,
+          end: r.end,
+        }),
       ]);
       setClient(c);
       setMerchants(m);
@@ -99,7 +119,7 @@ export default function ClienteDetailPage() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientId]);
+  }, [clientId, period]);
 
   async function reconnect() {
     if (
@@ -200,6 +220,11 @@ export default function ClienteDetailPage() {
             Remover
           </Button>
         </div>
+      </div>
+
+      {/* ===== Período ===== */}
+      <div className="flex justify-end">
+        <DateRangeFilter value={period} onChange={setPeriod} />
       </div>
 
       {/* ===== KPIs ===== */}

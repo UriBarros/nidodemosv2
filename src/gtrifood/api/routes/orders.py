@@ -49,6 +49,8 @@ async def count_orders(
     client_id: uuid.UUID | None = Query(default=None),
     merchant_id: uuid.UUID | None = Query(default=None),
     status: str | None = Query(default=None),
+    begin: str | None = Query(default=None, description="ISO datetime/date — created_at_ifood >= begin"),
+    end: str | None = Query(default=None, description="ISO datetime/date — created_at_ifood <= end"),
 ) -> CountOut:
     stmt = select(func.count(Order.id)).where(Order.tenant_id == tenant_id)
     if client_id:
@@ -59,6 +61,10 @@ async def count_orders(
         stmt = stmt.where(Order.merchant_id == merchant_id)
     if status:
         stmt = stmt.where(Order.status == status)
+    if begin:
+        stmt = stmt.where(Order.created_at_ifood >= begin)
+    if end:
+        stmt = stmt.where(Order.created_at_ifood <= end)
 
     result = await db.execute(stmt)
     return CountOut(count=result.scalar_one())

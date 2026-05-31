@@ -11,22 +11,37 @@ import { StatCard } from "@/components/stat-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ClientFilter } from "@/components/client-filter";
+import {
+  DateRangeFilter,
+  presetToDateRange,
+  presetToRange,
+  type DateRangePreset,
+} from "@/components/date-range-filter";
 
 export default function DashboardHome() {
   const qc = useQueryClient();
   const [clientId, setClientId] = useState<string | null>(null);
+  const [period, setPeriod] = useState<DateRangePreset>("30d");
+
+  const range = presetToRange(period);
+  const dateRange = presetToDateRange(period);
 
   const merchants = useQuery({
     queryKey: ["merchants"],
     queryFn: () => apiGet<Merchant[]>("/merchants"),
   });
   const ordersTotal = useQuery({
-    queryKey: ["orders-count", clientId],
+    queryKey: ["orders-count", clientId, period],
     queryFn: () =>
-      apiGet<Count>("/orders/count", { client_id: clientId ?? undefined }),
+      apiGet<Count>("/orders/count", {
+        client_id: clientId ?? undefined,
+        begin: range.begin,
+        end: range.end,
+      }),
   });
   const ordersPlaced = useQuery({
     queryKey: ["orders-count", "PLACED", clientId],
+    // "Em aberto" sempre mostra o presente — não filtra por período histórico
     queryFn: () =>
       apiGet<Count>("/orders/count", {
         client_id: clientId ?? undefined,
@@ -34,10 +49,12 @@ export default function DashboardHome() {
       }),
   });
   const financialSummary = useQuery({
-    queryKey: ["financial-summary", clientId],
+    queryKey: ["financial-summary", clientId, period],
     queryFn: () =>
       apiGet<Record<string, number>>("/financial/summary", {
         client_id: clientId ?? undefined,
+        begin: dateRange.begin,
+        end: dateRange.end,
       }),
   });
 
@@ -61,8 +78,9 @@ export default function DashboardHome() {
             Resumo dos seus dados iFood em tempo real.
           </p>
         </div>
-        <div className="flex items-end gap-3">
+        <div className="flex flex-wrap items-end gap-3">
           <ClientFilter value={clientId} onChange={setClientId} />
+          <DateRangeFilter value={period} onChange={setPeriod} />
           <Button
             onClick={() => syncMerchants.mutate()}
             disabled={syncMerchants.isPending}
