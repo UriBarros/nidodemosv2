@@ -31,6 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { OrderStatusBadge } from "@/components/order-status-badge";
+import { ClientFilter } from "@/components/client-filter";
 
 const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "all", label: "Todos" },
@@ -44,6 +45,7 @@ const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
 
 export default function PedidosPage() {
   const qc = useQueryClient();
+  const [clientId, setClientId] = useState<string | null>(null);
   const [merchantId, setMerchantId] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -54,9 +56,10 @@ export default function PedidosPage() {
   });
 
   const orders = useQuery({
-    queryKey: ["orders", merchantId, statusFilter],
+    queryKey: ["orders", clientId, merchantId, statusFilter],
     queryFn: () =>
       apiGet<Order[]>("/orders", {
+        client_id: clientId ?? undefined,
         merchant_id: merchantId === "all" ? undefined : merchantId,
         status: statusFilter === "all" ? undefined : statusFilter,
         limit: 100,
@@ -101,6 +104,10 @@ export default function PedidosPage() {
       {/* Filtros */}
       <Card>
         <CardContent className="flex flex-wrap items-end gap-4 p-4">
+          <div className="min-w-[260px] space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Cliente</label>
+            <ClientFilter value={clientId} onChange={setClientId} />
+          </div>
           <div className="min-w-[200px] space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Merchant</label>
             <Select value={merchantId} onValueChange={setMerchantId}>

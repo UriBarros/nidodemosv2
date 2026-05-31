@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { StatCard } from "@/components/stat-card";
+import { ClientFilter } from "@/components/client-filter";
 
 type Summary = {
   total: number;
@@ -26,6 +27,7 @@ type Summary = {
 
 export default function ReviewsPage() {
   const qc = useQueryClient();
+  const [clientId, setClientId] = useState<string | null>(null);
   const [merchantId, setMerchantId] = useState<string>("all");
 
   const merchants = useQuery({
@@ -34,17 +36,19 @@ export default function ReviewsPage() {
   });
 
   const summary = useQuery({
-    queryKey: ["reviews-summary", merchantId],
+    queryKey: ["reviews-summary", clientId, merchantId],
     queryFn: () =>
       apiGet<Summary>("/reviews/summary", {
+        client_id: clientId ?? undefined,
         merchant_id: merchantId === "all" ? undefined : merchantId,
       }),
   });
 
   const list = useQuery({
-    queryKey: ["reviews-list", merchantId],
+    queryKey: ["reviews-list", clientId, merchantId],
     queryFn: () =>
       apiGet<Review[]>("/reviews", {
+        client_id: clientId ?? undefined,
         merchant_id: merchantId === "all" ? undefined : merchantId,
         limit: 50,
       }),
@@ -77,7 +81,11 @@ export default function ReviewsPage() {
       </div>
 
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="flex flex-wrap items-end gap-4 p-4">
+          <div className="min-w-[260px] space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Cliente</label>
+            <ClientFilter value={clientId} onChange={setClientId} />
+          </div>
           <div className="min-w-[200px] space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Merchant</label>
             <Select value={merchantId} onValueChange={setMerchantId}>

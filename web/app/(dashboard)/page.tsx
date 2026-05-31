@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, ShoppingBag, Store, Wallet, Zap } from "lucide-react";
 import { toast } from "sonner";
@@ -9,25 +10,35 @@ import type { Count, Merchant } from "@/lib/types";
 import { StatCard } from "@/components/stat-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ClientFilter } from "@/components/client-filter";
 
 export default function DashboardHome() {
   const qc = useQueryClient();
+  const [clientId, setClientId] = useState<string | null>(null);
 
   const merchants = useQuery({
     queryKey: ["merchants"],
     queryFn: () => apiGet<Merchant[]>("/merchants"),
   });
   const ordersTotal = useQuery({
-    queryKey: ["orders-count"],
-    queryFn: () => apiGet<Count>("/orders/count"),
+    queryKey: ["orders-count", clientId],
+    queryFn: () =>
+      apiGet<Count>("/orders/count", { client_id: clientId ?? undefined }),
   });
   const ordersPlaced = useQuery({
-    queryKey: ["orders-count", "PLACED"],
-    queryFn: () => apiGet<Count>("/orders/count", { status: "PLACED" }),
+    queryKey: ["orders-count", "PLACED", clientId],
+    queryFn: () =>
+      apiGet<Count>("/orders/count", {
+        client_id: clientId ?? undefined,
+        status: "PLACED",
+      }),
   });
   const financialSummary = useQuery({
-    queryKey: ["financial-summary"],
-    queryFn: () => apiGet<Record<string, number>>("/financial/summary"),
+    queryKey: ["financial-summary", clientId],
+    queryFn: () =>
+      apiGet<Record<string, number>>("/financial/summary", {
+        client_id: clientId ?? undefined,
+      }),
   });
 
   const syncMerchants = useMutation({
@@ -50,14 +61,19 @@ export default function DashboardHome() {
             Resumo dos seus dados iFood em tempo real.
           </p>
         </div>
-        <Button
-          onClick={() => syncMerchants.mutate()}
-          disabled={syncMerchants.isPending}
-          variant="outline"
-        >
-          <RefreshCw className={syncMerchants.isPending ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-          Sincronizar merchants
-        </Button>
+        <div className="flex items-end gap-3">
+          <ClientFilter value={clientId} onChange={setClientId} />
+          <Button
+            onClick={() => syncMerchants.mutate()}
+            disabled={syncMerchants.isPending}
+            variant="outline"
+          >
+            <RefreshCw
+              className={syncMerchants.isPending ? "h-4 w-4 animate-spin" : "h-4 w-4"}
+            />
+            Sincronizar merchants
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

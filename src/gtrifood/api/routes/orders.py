@@ -12,7 +12,7 @@ from gtrifood.api.deps import get_current_tenant, get_db
 from gtrifood.api.schemas import CountOut, OrderEventOut, OrderOut
 from gtrifood.integrations.ifood.client import IFoodAPIError, IFoodClient
 from gtrifood.integrations.ifood.orders import OrdersAPI
-from gtrifood.models.db import Order, OrderEvent
+from gtrifood.models.db import Merchant, Order, OrderEvent
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -21,12 +21,17 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 async def list_orders(
     db: AsyncSession = Depends(get_db),
     tenant_id: uuid.UUID = Depends(get_current_tenant),
+    client_id: uuid.UUID | None = Query(default=None),
     merchant_id: uuid.UUID | None = Query(default=None),
     status: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> list[Order]:
     stmt = select(Order).where(Order.tenant_id == tenant_id)
+    if client_id:
+        stmt = stmt.join(Merchant, Order.merchant_id == Merchant.id).where(
+            Merchant.client_id == client_id
+        )
     if merchant_id:
         stmt = stmt.where(Order.merchant_id == merchant_id)
     if status:
@@ -41,10 +46,15 @@ async def list_orders(
 async def count_orders(
     db: AsyncSession = Depends(get_db),
     tenant_id: uuid.UUID = Depends(get_current_tenant),
+    client_id: uuid.UUID | None = Query(default=None),
     merchant_id: uuid.UUID | None = Query(default=None),
     status: str | None = Query(default=None),
 ) -> CountOut:
     stmt = select(func.count(Order.id)).where(Order.tenant_id == tenant_id)
+    if client_id:
+        stmt = stmt.join(Merchant, Order.merchant_id == Merchant.id).where(
+            Merchant.client_id == client_id
+        )
     if merchant_id:
         stmt = stmt.where(Order.merchant_id == merchant_id)
     if status:

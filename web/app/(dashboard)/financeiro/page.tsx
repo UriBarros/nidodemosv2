@@ -25,9 +25,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StatCard } from "@/components/stat-card";
+import { ClientFilter } from "@/components/client-filter";
 
 export default function FinanceiroPage() {
   const qc = useQueryClient();
+  const [clientId, setClientId] = useState<string | null>(null);
   const [merchantId, setMerchantId] = useState<string>("all");
 
   const merchants = useQuery({
@@ -36,17 +38,19 @@ export default function FinanceiroPage() {
   });
 
   const summary = useQuery({
-    queryKey: ["financial-summary", merchantId],
+    queryKey: ["financial-summary", clientId, merchantId],
     queryFn: () =>
       apiGet<Record<string, number>>("/financial/summary", {
+        client_id: clientId ?? undefined,
         merchant_id: merchantId === "all" ? undefined : merchantId,
       }),
   });
 
   const list = useQuery({
-    queryKey: ["financial-list", merchantId],
+    queryKey: ["financial-list", clientId, merchantId],
     queryFn: () =>
       apiGet<FinancialEvent[]>("/financial", {
+        client_id: clientId ?? undefined,
         merchant_id: merchantId === "all" ? undefined : merchantId,
         limit: 200,
       }),
@@ -82,7 +86,11 @@ export default function FinanceiroPage() {
       </div>
 
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="flex flex-wrap items-end gap-4 p-4">
+          <div className="min-w-[260px] space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Cliente</label>
+            <ClientFilter value={clientId} onChange={setClientId} />
+          </div>
           <div className="min-w-[200px] space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Merchant</label>
             <Select value={merchantId} onValueChange={setMerchantId}>

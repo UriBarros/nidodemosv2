@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gtrifood.api.deps import get_current_tenant, get_db
 from gtrifood.api.schemas import ReviewOut, SyncResultOut
-from gtrifood.models.db import Review
+from gtrifood.models.db import Merchant, Review
 from gtrifood.services.reviews_sync import sync_reviews_for_merchant
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
@@ -20,12 +20,17 @@ router = APIRouter(prefix="/reviews", tags=["reviews"])
 async def list_reviews(
     db: AsyncSession = Depends(get_db),
     tenant_id: uuid.UUID = Depends(get_current_tenant),
+    client_id: uuid.UUID | None = Query(default=None),
     merchant_id: uuid.UUID | None = Query(default=None),
     min_score: int | None = Query(default=None, ge=1, le=5),
     answered: bool | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
 ) -> list[Review]:
     stmt = select(Review).where(Review.tenant_id == tenant_id)
+    if client_id:
+        stmt = stmt.join(Merchant, Review.merchant_id == Merchant.id).where(
+            Merchant.client_id == client_id
+        )
     if merchant_id:
         stmt = stmt.where(Review.merchant_id == merchant_id)
     if min_score is not None:
@@ -42,6 +47,7 @@ async def list_reviews(
 async def reviews_summary(
     db: AsyncSession = Depends(get_db),
     tenant_id: uuid.UUID = Depends(get_current_tenant),
+    client_id: uuid.UUID | None = Query(default=None),
     merchant_id: uuid.UUID | None = Query(default=None),
 ) -> dict[str, float | int]:
     """Métricas agregadas: total, média de score, % respondidas."""
@@ -50,6 +56,10 @@ async def reviews_summary(
         func.avg(Review.score),
         func.sum(case((Review.answered.is_(True), 1), else_=0)),
     ).where(Review.tenant_id == tenant_id)
+    if client_id:
+        stmt = stmt.join(Merchant, Review.merchant_id == Merchant.id).where(
+            Merchant.client_id == client_id
+        )
     if merchant_id:
         stmt = stmt.where(Review.merchant_id == merchant_id)
 
