@@ -3,7 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, LogOut, ShoppingBag, Star, Store, Wallet } from "lucide-react";
+import {
+  BookOpen,
+  LayoutDashboard,
+  LogOut,
+  ShoppingBag,
+  Star,
+  Store,
+  Wallet,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -13,6 +21,7 @@ const ITEMS = [
   { href: "/", label: "Visão geral", icon: LayoutDashboard },
   { href: "/clientes", label: "Clientes", icon: Store },
   { href: "/pedidos", label: "Pedidos", icon: ShoppingBag },
+  { href: "/cardapio", label: "Cardápio", icon: BookOpen },
   { href: "/financeiro", label: "Financeiro", icon: Wallet },
   { href: "/reviews", label: "Reviews", icon: Star },
 ];

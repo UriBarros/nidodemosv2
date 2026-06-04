@@ -145,3 +145,50 @@ class UserCodePollOut(BaseModel):
     status: str                              # pending | authorized | expired | error
     message: str | None = None
     client_status: str | None = None         # status do client após poll
+
+
+# =============================================================================
+# Catalog
+# =============================================================================
+class CatalogCategoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    merchant_id: uuid.UUID
+    ifood_category_id: str
+    name: str
+    external_code: str | None
+    status: str
+    sequence: int
+    synced_at: datetime
+
+
+class CatalogItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    merchant_id: uuid.UUID
+    category_id: uuid.UUID | None
+    ifood_item_id: str
+    name: str
+    description: str | None
+    external_code: str | None
+    price: Decimal | None
+    original_price: Decimal | None
+    status: str
+    image_path: str | None
+    synced_at: datetime
+
+
+class CatalogItemStatusIn(BaseModel):
+    status: str  # AVAILABLE | UNAVAILABLE
+
+
+class CatalogItemPriceIn(BaseModel):
+    price: Decimal
+
+
+class CatalogSyncOut(BaseModel):
+    merchant_id: uuid.UUID
+    categories: int
+    items: int

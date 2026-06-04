@@ -122,3 +122,38 @@ export type UserCodePoll = {
   message: string | null;
   client_status: ClientStatus | null;
 };
+
+// =============================================================================
+// Catalog
+// =============================================================================
+export type CatalogCategory = {
+  id: string;
+  merchant_id: string;
+  ifood_category_id: string;
+  name: string;
+  external_code: string | null;
+  status: string;
+  sequence: number;
+  synced_at: string;
+};
+
+export type CatalogItem = {
+  id: string;
+  merchant_id: string;
+  category_id: string | null;
+  ifood_item_id: string;
+  name: string;
+  description: string | null;
+  external_code: string | null;
+  price: string | null; // Decimal vem como string
+  original_price: string | null;
+  status: "AVAILABLE" | "UNAVAILABLE";
+  image_path: string | null;
+  synced_at: string;
+};
+
+export type CatalogSyncResult = {
+  merchant_id: string;
+  categories: number;
+  items: number;
+};
