@@ -124,18 +124,6 @@ jobs:
           git commit -m "ci: bump image tags to sha-${SHORT_SHA} [skip ci]"
           git push
 
-  deploy:
-    needs: update-stack
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger Portainer redeploy
-        env:
-          WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK_URL }}
-        run: |
-          if [ -z "$WEBHOOK" ]; then
-            echo "PORTAINER_WEBHOOK_URL not set — skipping"
-            exit 0
-          fi
-          # Aguarda 5s pro Portainer ver o commit novo do YML antes do webhook
-          sleep 5
-          curl -X POST "$WEBHOOK" --fail --silent --show-error
+  # Job deploy removido: Portainer GitOps detecta o commit do YML
+  # automaticamente (polling/webhook próprio) e faz redeploy.
+  # Webhook do GH Actions sempre dava timeout por IP bloqueado no Hostinger.
