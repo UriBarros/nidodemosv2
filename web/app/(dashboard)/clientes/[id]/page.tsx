@@ -289,7 +289,14 @@ export default function ClienteDetailPage() {
               <TableBody>
                 {merchants.map((m) => (
                   <TableRow key={m.id}>
-                    <TableCell className="font-medium">{m.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <Link
+                        href={`/merchants/${m.id}`}
+                        className="hover:underline"
+                      >
+                        {m.name}
+                      </Link>
+                    </TableCell>
                     <TableCell className="font-mono text-xs">
                       {m.ifood_merchant_id}
                     </TableCell>

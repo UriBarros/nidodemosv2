@@ -158,3 +158,40 @@ export type CatalogSyncResult = {
   categories: number;
   items: number;
 };
+
+// =============================================================================
+// Merchant — interrupções + horários
+// =============================================================================
+export type Interruption = {
+  id?: string;
+  description?: string;
+  start?: string;
+  end?: string;
+  [key: string]: any; // iFood payload completo
+};
+
+export type InterruptionIn = {
+  description: string;
+  start: string; // ISO datetime
+  end: string;
+};
+
+export type DayOfWeek =
+  | "MONDAY"
+  | "TUESDAY"
+  | "WEDNESDAY"
+  | "THURSDAY"
+  | "FRIDAY"
+  | "SATURDAY"
+  | "SUNDAY";
+
+export type Shift = {
+  dayOfWeek: DayOfWeek;
+  start: string; // HH:MM:SS
+  duration: number; // minutos
+};
+
+export type OpeningHours = {
+  shifts?: Shift[];
+  [key: string]: any;
+};

@@ -82,6 +82,31 @@ class ReviewReplyIn(BaseModel):
     text: str
 
 
+# =============================================================================
+# Merchant — interrupções + horários
+# =============================================================================
+class InterruptionIn(BaseModel):
+    description: str
+    start: datetime
+    end: datetime
+
+
+class ShiftIn(BaseModel):
+    """Um turno de funcionamento em 1 dia.
+
+    Ex: sábado das 10 às 19 = dayOfWeek=SATURDAY, start='10:00:00', duration=540
+    (540 min = 9h). Múltiplos shifts no mesmo dia para intervalos.
+    """
+
+    dayOfWeek: str  # MONDAY, TUESDAY, ..., SUNDAY
+    start: str      # HH:MM:SS
+    duration: int   # minutos
+
+
+class OpeningHoursIn(BaseModel):
+    shifts: list[ShiftIn]
+
+
 class HealthOut(BaseModel):
     status: str
     version: str

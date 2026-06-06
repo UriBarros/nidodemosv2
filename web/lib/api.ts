@@ -60,6 +60,34 @@ export async function apiDelete(path: string): Promise<void> {
   }
 }
 
+export async function apiPut<T>(
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  const url = new URL(`${PUBLIC_BASE}${path}`, window.location.origin);
+  const res = await fetch(url.toString(), {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...(await authHeaders()),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    let msg = `PUT ${path} → ${res.status}`;
+    try {
+      const j = JSON.parse(text);
+      if (j?.detail) msg = String(j.detail);
+    } catch {
+      // ignore
+    }
+    throw new ApiError(res.status, msg, text);
+  }
+  const text = await res.text();
+  return (text ? JSON.parse(text) : null) as T;
+}
+
 export async function apiPatch<T>(
   path: string,
   body?: unknown,
