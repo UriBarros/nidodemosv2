@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MessageSquare, RefreshCw, Star } from "lucide-react";
+import { Loader2, MessageSquare, RefreshCw, Send, Star, X } from "lucide-react";
 import { toast } from "sonner";
 import { apiGet, apiPost } from "@/lib/api";
 import type { Merchant, Review } from "@/lib/types";
@@ -29,6 +29,8 @@ export default function ReviewsPage() {
   const qc = useQueryClient();
   const [clientId, setClientId] = useState<string | null>(null);
   const [merchantId, setMerchantId] = useState<string>("all");
+  const [replyFor, setReplyFor] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft] = useState<string>("");
 
   const merchants = useQuery({
     queryKey: ["merchants"],
@@ -66,6 +68,42 @@ export default function ReviewsPage() {
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha"),
   });
+
+  const reply = useMutation({
+    mutationFn: ({ id, text }: { id: string; text: string }) =>
+      apiPost<Review>(`/reviews/${id}/reply`, { text }),
+    onSuccess: () => {
+      setReplyFor(null);
+      setReplyDraft("");
+      qc.invalidateQueries({ queryKey: ["reviews-list"] });
+      qc.invalidateQueries({ queryKey: ["reviews-summary"] });
+      toast.success("Resposta enviada ao iFood");
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao responder"),
+  });
+
+  function startReply(reviewId: string) {
+    setReplyFor(reviewId);
+    setReplyDraft("");
+  }
+
+  function cancelReply() {
+    setReplyFor(null);
+    setReplyDraft("");
+  }
+
+  function sendReply(reviewId: string) {
+    const text = replyDraft.trim();
+    if (!text) {
+      toast.error("Digite uma resposta");
+      return;
+    }
+    if (text.length > 1000) {
+      toast.error("Resposta excede 1000 caracteres");
+      return;
+    }
+    reply.mutate({ id: reviewId, text });
+  }
 
   return (
     <div className="space-y-6">
@@ -136,15 +174,89 @@ export default function ReviewsPage() {
                       />
                     ))}
                     <span className="ml-2 text-sm font-medium">{r.customer_name ?? "Anônimo"}</span>
+                    {r.ifood_order_id && (
+                      <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                        #{r.ifood_order_id.slice(0, 8)}
+                      </span>
+                    )}
                   </div>
-                  {r.answered && (
-                    <span className="text-xs font-medium text-emerald-700">✓ Respondida</span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {r.created_at_ifood && (
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(r.created_at_ifood).toLocaleDateString("pt-BR")}
+                      </span>
+                    )}
+                    {r.answered && (
+                      <span className="text-xs font-medium text-emerald-700">✓ Respondida</span>
+                    )}
+                  </div>
                 </div>
                 {r.comment && <p className="text-sm">{r.comment}</p>}
                 {r.answer_text && (
                   <div className="rounded-md bg-muted/50 p-2 text-sm">
                     <strong>Resposta:</strong> {r.answer_text}
+                  </div>
+                )}
+
+                {/* Bloco de responder */}
+                {!r.answered && (
+                  <div className="pt-1">
+                    {replyFor === r.id ? (
+                      <div className="space-y-2">
+                        <textarea
+                          value={replyDraft}
+                          onChange={(e) => setReplyDraft(e.target.value)}
+                          maxLength={1000}
+                          rows={3}
+                          autoFocus
+                          placeholder="Digite a resposta ao cliente..."
+                          className="w-full rounded-md border border-input bg-background p-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") cancelReply();
+                            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                              sendReply(r.id);
+                            }
+                          }}
+                        />
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            {replyDraft.length}/1000 · Ctrl+Enter envia
+                          </span>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={cancelReply}
+                              disabled={reply.isPending}
+                            >
+                              <X className="h-4 w-4" />
+                              Cancelar
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => sendReply(r.id)}
+                              disabled={reply.isPending}
+                            >
+                              {reply.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Send className="h-4 w-4" />
+                              )}
+                              Enviar resposta
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => startReply(r.id)}
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                        Responder
+                      </Button>
+                    )}
                   </div>
                 )}
               </CardContent>

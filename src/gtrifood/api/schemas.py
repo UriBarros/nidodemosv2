@@ -67,12 +67,19 @@ class ReviewOut(BaseModel):
     id: uuid.UUID
     merchant_id: uuid.UUID
     ifood_review_id: str
+    ifood_order_id: str | None
     score: int | None
     comment: str | None
     customer_name: str | None
     answered: bool
     answer_text: str | None
     created_at_ifood: datetime | None
+
+
+class ReviewReplyIn(BaseModel):
+    """Payload pra responder uma avaliação."""
+
+    text: str
 
 
 class HealthOut(BaseModel):

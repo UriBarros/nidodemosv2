@@ -49,6 +49,7 @@ export type Review = {
   id: string;
   merchant_id: string;
   ifood_review_id: string;
+  ifood_order_id: string | null;
   score: number | null;
   comment: string | null;
   customer_name: string | null;
