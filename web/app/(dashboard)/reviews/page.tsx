@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, MessageSquare, RefreshCw, Send, Star, X } from "lucide-react";
+import Link from "next/link";
+import { ExternalLink, Loader2, MessageSquare, RefreshCw, Send, Star, X } from "lucide-react";
 import { toast } from "sonner";
 import { apiGet, apiPost } from "@/lib/api";
 import type { Merchant, Review } from "@/lib/types";
@@ -17,6 +18,11 @@ import {
 } from "@/components/ui/select";
 import { StatCard } from "@/components/stat-card";
 import { ClientFilter } from "@/components/client-filter";
+import {
+  DateRangeFilter,
+  presetToRange,
+  type DateRangePreset,
+} from "@/components/date-range-filter";
 
 type Summary = {
   total: number;
@@ -29,6 +35,8 @@ export default function ReviewsPage() {
   const qc = useQueryClient();
   const [clientId, setClientId] = useState<string | null>(null);
   const [merchantId, setMerchantId] = useState<string>("all");
+  const [period, setPeriod] = useState<DateRangePreset>("30d");
+  const [limit, setLimit] = useState<number>(100);
   const [replyFor, setReplyFor] = useState<string | null>(null);
   const [replyDraft, setReplyDraft] = useState<string>("");
 
@@ -37,22 +45,28 @@ export default function ReviewsPage() {
     queryFn: () => apiGet<Merchant[]>("/merchants"),
   });
 
+  const range = presetToRange(period);
+
   const summary = useQuery({
-    queryKey: ["reviews-summary", clientId, merchantId],
+    queryKey: ["reviews-summary", clientId, merchantId, period],
     queryFn: () =>
       apiGet<Summary>("/reviews/summary", {
         client_id: clientId ?? undefined,
         merchant_id: merchantId === "all" ? undefined : merchantId,
+        begin: range.begin,
+        end: range.end,
       }),
   });
 
   const list = useQuery({
-    queryKey: ["reviews-list", clientId, merchantId],
+    queryKey: ["reviews-list", clientId, merchantId, period, limit],
     queryFn: () =>
       apiGet<Review[]>("/reviews", {
         client_id: clientId ?? undefined,
         merchant_id: merchantId === "all" ? undefined : merchantId,
-        limit: 50,
+        begin: range.begin,
+        end: range.end,
+        limit,
       }),
   });
 
@@ -140,6 +154,27 @@ export default function ReviewsPage() {
               </SelectContent>
             </Select>
           </div>
+          <div className="min-w-[180px] space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Período</label>
+            <DateRangeFilter value={period} onChange={setPeriod} />
+          </div>
+          <div className="min-w-[100px] space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Limite</label>
+            <Select
+              value={String(limit)}
+              onValueChange={(v) => setLimit(parseInt(v))}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="3">3</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+                <SelectItem value="200">200</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardContent>
       </Card>
 
@@ -189,6 +224,12 @@ export default function ReviewsPage() {
                     {r.answered && (
                       <span className="text-xs font-medium text-emerald-700">✓ Respondida</span>
                     )}
+                    <Button variant="ghost" size="sm" asChild className="h-7 px-2">
+                      <Link href={`/reviews/${r.id}`}>
+                        <ExternalLink className="h-3 w-3" />
+                        Detalhes
+                      </Link>
+                    </Button>
                   </div>
                 </div>
                 {r.comment && <p className="text-sm">{r.comment}</p>}

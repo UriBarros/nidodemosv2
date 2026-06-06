@@ -33,6 +33,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ClientFilter } from "@/components/client-filter";
+import { CatalogComplements } from "@/components/catalog-complements";
 
 export default function CardapioPage() {
   const qc = useQueryClient();
@@ -609,6 +610,9 @@ export default function CardapioPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Complementos */}
+      <CatalogComplements merchantId={resolveMerchantId()} />
     </div>
   );
 }
