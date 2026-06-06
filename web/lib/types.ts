@@ -25,6 +25,10 @@ export type Order = {
   updated_at: string;
 };
 
+export type OrderDetail = Order & {
+  raw_data: Record<string, any>;
+};
+
 export type OrderEvent = {
   id: string;
   ifood_event_id: string;

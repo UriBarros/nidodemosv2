@@ -169,7 +169,15 @@ export default function PedidosPage() {
                     onClick={() => setSelectedId(o.id)}
                     className={`cursor-pointer ${selectedId === o.id ? "bg-muted" : ""}`}
                   >
-                    <TableCell className="font-medium">#{o.display_id ?? "—"}</TableCell>
+                    <TableCell className="font-medium">
+                      <a
+                        href={`/pedidos/${o.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="hover:underline"
+                      >
+                        #{o.display_id ?? "—"}
+                      </a>
+                    </TableCell>
                     <TableCell>
                       <OrderStatusBadge status={o.status as OrderStatus} />
                     </TableCell>

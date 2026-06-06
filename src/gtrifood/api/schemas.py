@@ -34,6 +34,25 @@ class OrderOut(BaseModel):
     total_amount: Decimal | None
     customer_name: str | None
     synced_at: datetime
+
+
+class OrderDetailOut(BaseModel):
+    """Pedido completo com raw_data (todos os campos do iFood)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    merchant_id: uuid.UUID
+    ifood_order_id: str
+    display_id: str | None
+    status: str
+    order_type: str | None
+    created_at_ifood: datetime | None
+    total_amount: Decimal | None
+    customer_name: str | None
+    raw_data: dict
+    synced_at: datetime
+    updated_at: datetime
     updated_at: datetime
 
 

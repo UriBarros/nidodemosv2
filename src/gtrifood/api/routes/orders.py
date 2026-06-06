@@ -9,7 +9,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gtrifood.api.deps import get_current_tenant, get_db
-from gtrifood.api.schemas import CountOut, OrderEventOut, OrderOut
+from gtrifood.api.schemas import CountOut, OrderDetailOut, OrderEventOut, OrderOut
 from gtrifood.integrations.ifood.client import IFoodAPIError, IFoodClient
 from gtrifood.integrations.ifood.orders import OrdersAPI
 from gtrifood.models.db import Merchant, Order, OrderEvent
@@ -70,12 +70,13 @@ async def count_orders(
     return CountOut(count=result.scalar_one())
 
 
-@router.get("/{order_id}", response_model=OrderOut)
+@router.get("/{order_id}", response_model=OrderDetailOut)
 async def get_order(
     order_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     tenant_id: uuid.UUID = Depends(get_current_tenant),
 ) -> Order:
+    """Retorna pedido com raw_data completo (todos os campos iFood)."""
     result = await db.execute(
         select(Order).where(Order.id == order_id, Order.tenant_id == tenant_id)
     )
