@@ -60,6 +60,39 @@ export async function apiDelete(path: string): Promise<void> {
   }
 }
 
+export async function apiUpload<T>(
+  path: string,
+  file: File,
+  params?: Record<string, string | number | undefined>,
+): Promise<T> {
+  const url = new URL(`${PUBLIC_BASE}${path}`, window.location.origin);
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined) url.searchParams.set(k, String(v));
+    }
+  }
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { ...(await authHeaders()) }, // sem Content-Type — browser põe boundary
+    body: form,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    let msg = `UPLOAD ${path} → ${res.status}`;
+    try {
+      const j = JSON.parse(text);
+      if (j?.detail) msg = String(j.detail);
+    } catch {
+      // ignore
+    }
+    throw new ApiError(res.status, msg, text);
+  }
+  const text = await res.text();
+  return (text ? JSON.parse(text) : null) as T;
+}
+
 export async function apiPut<T>(
   path: string,
   body?: unknown,

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +22,12 @@ from gtrifood.api.schemas import (
     CatalogItemPriceIn,
     CatalogItemStatusIn,
     CatalogSyncOut,
+    CategoryCreateIn,
+    ItemCreateIn,
+    ItemUpdateIn,
+    OptionCreateIn,
+    OptionGroupCreateIn,
+    OptionUpdateIn,
 )
 from gtrifood.integrations.ifood.catalog import CatalogAPI
 from gtrifood.integrations.ifood.client import IFoodAPIError, IFoodClient
@@ -212,3 +218,273 @@ async def _ifood_for_merchant(merchant_info: dict) -> IFoodClient:
 
         return IFoodClient(token_provider=_tp)
     return IFoodClient()
+
+
+async def _merchant_ctx(
+    db: AsyncSession, tenant_id: uuid.UUID, merchant_id: uuid.UUID
+) -> tuple[Merchant, dict, IFoodClient]:
+    """Retorna merchant + dict info + IFoodClient pronto pra usar."""
+    result = await db.execute(
+        select(Merchant).where(
+            Merchant.id == merchant_id, Merchant.tenant_id == tenant_id
+        )
+    )
+    m = result.scalar_one_or_none()
+    if not m:
+        raise HTTPException(404, "merchant não encontrado")
+    info = {"ifood_merchant_id": m.ifood_merchant_id, "client_id": m.client_id}
+    return m, info, await _ifood_for_merchant(info)
+
+
+# =============================================================================
+# Criar categoria
+# =============================================================================
+@router.post("/categories", status_code=201)
+async def create_category(
+    payload: CategoryCreateIn,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> dict:
+    if not payload.name.strip():
+        raise HTTPException(400, "nome obrigatório")
+    _, info, ifood = await _merchant_ctx(db, tenant_id, payload.merchant_id)
+    api = CatalogAPI(ifood)
+
+    catalogs = await api.list_catalogs(info["ifood_merchant_id"])
+    if not catalogs:
+        raise HTTPException(400, "merchant sem catálogo iFood")
+    catalog_id = catalogs[0].get("catalogId") or catalogs[0].get("id")
+
+    try:
+        result = await api.create_category(
+            info["ifood_merchant_id"],
+            catalog_id,
+            name=payload.name.strip(),
+            external_code=payload.external_code,
+        )
+    except IFoodAPIError as e:
+        raise HTTPException(
+            status_code=400 if 400 <= e.status_code < 500 else 502,
+            detail=f"iFood: {e.body}",
+        ) from e
+    return result or {"status": "created"}
+
+
+# =============================================================================
+# Criar item
+# =============================================================================
+@router.post("/items", status_code=201)
+async def create_item(
+    payload: ItemCreateIn,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> dict:
+    if not payload.name.strip():
+        raise HTTPException(400, "nome obrigatório")
+    if payload.price < 0:
+        raise HTTPException(400, "preço não pode ser negativo")
+
+    # Resolve category_id → ifood_category_id
+    cat_row = await db.execute(
+        select(CatalogCategory.ifood_category_id).where(
+            CatalogCategory.id == payload.category_id,
+            CatalogCategory.tenant_id == tenant_id,
+        )
+    )
+    ifood_cat = cat_row.scalar_one_or_none()
+    if not ifood_cat:
+        raise HTTPException(404, "categoria não encontrada")
+
+    _, info, ifood = await _merchant_ctx(db, tenant_id, payload.merchant_id)
+    api = CatalogAPI(ifood)
+
+    try:
+        result = await api.create_item(
+            info["ifood_merchant_id"],
+            category_id=ifood_cat,
+            name=payload.name.strip(),
+            description=payload.description,
+            price=float(payload.price),
+            status=payload.status,
+            external_code=payload.external_code,
+            image_path=payload.image_path,
+        )
+    except IFoodAPIError as e:
+        raise HTTPException(
+            status_code=400 if 400 <= e.status_code < 500 else 502,
+            detail=f"iFood: {e.body}",
+        ) from e
+    return result or {"status": "created"}
+
+
+# =============================================================================
+# Atualizar item (nome/descrição/foto)
+# =============================================================================
+@router.patch("/items/{item_id}", response_model=CatalogItemOut)
+async def update_item(
+    item_id: uuid.UUID,
+    payload: ItemUpdateIn,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> CatalogItem:
+    item = await _get_item_or_404(db, tenant_id, item_id)
+    merchant_info = await _get_merchant_for_item(db, item)
+    ifood = await _ifood_for_merchant(merchant_info)
+    api = CatalogAPI(ifood)
+
+    try:
+        await api.update_item(
+            merchant_info["ifood_merchant_id"],
+            item.ifood_item_id,
+            name=payload.name,
+            description=payload.description,
+            image_path=payload.image_path,
+            external_code=payload.external_code,
+        )
+    except IFoodAPIError as e:
+        raise HTTPException(
+            status_code=400 if 400 <= e.status_code < 500 else 502,
+            detail=f"iFood: {e.body}",
+        ) from e
+
+    # Atualiza local
+    if payload.name is not None:
+        item.name = payload.name
+    if payload.description is not None:
+        item.description = payload.description
+    if payload.image_path is not None:
+        item.image_path = payload.image_path
+    if payload.external_code is not None:
+        item.external_code = payload.external_code
+    await db.commit()
+    await db.refresh(item)
+    return item
+
+
+# =============================================================================
+# Upload de imagem
+# =============================================================================
+@router.post("/upload-image")
+async def upload_image(
+    merchant_id: uuid.UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> dict:
+    _, info, ifood = await _merchant_ctx(db, tenant_id, merchant_id)
+    api = CatalogAPI(ifood)
+    image_bytes = await file.read()
+    if len(image_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(400, "imagem máx 10MB")
+    try:
+        result = await api.upload_image(
+            info["ifood_merchant_id"],
+            image_bytes,
+            content_type=file.content_type or "image/jpeg",
+        )
+    except IFoodAPIError as e:
+        raise HTTPException(
+            status_code=400 if 400 <= e.status_code < 500 else 502,
+            detail=f"iFood: {e.body}",
+        ) from e
+    return result or {"status": "uploaded"}
+
+
+# =============================================================================
+# Option groups + opções (complementos)
+# =============================================================================
+@router.get("/option-groups")
+async def list_option_groups(
+    merchant_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> list[dict]:
+    _, info, ifood = await _merchant_ctx(db, tenant_id, merchant_id)
+    api = CatalogAPI(ifood)
+    try:
+        return await api.list_option_groups(info["ifood_merchant_id"])
+    except IFoodAPIError as e:
+        raise HTTPException(502, f"iFood: {e.body}") from e
+
+
+@router.post("/option-groups", status_code=201)
+async def create_option_group(
+    payload: OptionGroupCreateIn,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> dict:
+    if not payload.name.strip():
+        raise HTTPException(400, "nome obrigatório")
+    _, info, ifood = await _merchant_ctx(db, tenant_id, payload.merchant_id)
+    api = CatalogAPI(ifood)
+    try:
+        result = await api.create_option_group(
+            info["ifood_merchant_id"],
+            name=payload.name.strip(),
+            min_choices=payload.min_choices,
+            max_choices=payload.max_choices,
+            external_code=payload.external_code,
+        )
+    except IFoodAPIError as e:
+        raise HTTPException(
+            status_code=400 if 400 <= e.status_code < 500 else 502,
+            detail=f"iFood: {e.body}",
+        ) from e
+    return result or {"status": "created"}
+
+
+@router.post("/options", status_code=201)
+async def create_option(
+    payload: OptionCreateIn,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> dict:
+    if not payload.name.strip():
+        raise HTTPException(400, "nome obrigatório")
+    if payload.price < 0:
+        raise HTTPException(400, "preço não pode ser negativo")
+    _, info, ifood = await _merchant_ctx(db, tenant_id, payload.merchant_id)
+    api = CatalogAPI(ifood)
+    try:
+        result = await api.create_option(
+            info["ifood_merchant_id"],
+            option_group_id=payload.option_group_id,
+            name=payload.name.strip(),
+            price=float(payload.price),
+            status=payload.status,
+            image_path=payload.image_path,
+            external_code=payload.external_code,
+        )
+    except IFoodAPIError as e:
+        raise HTTPException(
+            status_code=400 if 400 <= e.status_code < 500 else 502,
+            detail=f"iFood: {e.body}",
+        ) from e
+    return result or {"status": "created"}
+
+
+@router.patch("/options/{option_id}")
+async def update_option(
+    option_id: str,  # iFood id
+    payload: OptionUpdateIn,
+    merchant_id: uuid.UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> dict:
+    _, info, ifood = await _merchant_ctx(db, tenant_id, merchant_id)
+    api = CatalogAPI(ifood)
+    try:
+        result = await api.update_option(
+            info["ifood_merchant_id"],
+            option_id,
+            name=payload.name,
+            price=float(payload.price) if payload.price is not None else None,
+            status=payload.status,
+            image_path=payload.image_path,
+        )
+    except IFoodAPIError as e:
+        raise HTTPException(
+            status_code=400 if 400 <= e.status_code < 500 else 502,
+            detail=f"iFood: {e.body}",
+        ) from e
+    return result or {"status": "updated"}

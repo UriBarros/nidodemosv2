@@ -224,3 +224,54 @@ class CatalogSyncOut(BaseModel):
     merchant_id: uuid.UUID
     categories: int
     items: int
+
+
+# ===== Cria/Edita catalog =====
+class CategoryCreateIn(BaseModel):
+    merchant_id: uuid.UUID
+    name: str
+    external_code: str | None = None
+
+
+class ItemCreateIn(BaseModel):
+    merchant_id: uuid.UUID
+    category_id: uuid.UUID
+    name: str
+    description: str | None = None
+    price: Decimal
+    status: str = "AVAILABLE"
+    external_code: str | None = None
+    image_path: str | None = None
+
+
+class ItemUpdateIn(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    image_path: str | None = None
+    external_code: str | None = None
+
+
+# ===== Option groups =====
+class OptionGroupCreateIn(BaseModel):
+    merchant_id: uuid.UUID
+    name: str
+    min_choices: int = 0
+    max_choices: int = 1
+    external_code: str | None = None
+
+
+class OptionCreateIn(BaseModel):
+    merchant_id: uuid.UUID
+    option_group_id: str  # ifood id
+    name: str
+    price: Decimal
+    status: str = "AVAILABLE"
+    image_path: str | None = None
+    external_code: str | None = None
+
+
+class OptionUpdateIn(BaseModel):
+    name: str | None = None
+    price: Decimal | None = None
+    status: str | None = None
+    image_path: str | None = None

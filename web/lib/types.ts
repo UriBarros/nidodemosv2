@@ -159,6 +159,63 @@ export type CatalogSyncResult = {
   items: number;
 };
 
+export type CategoryCreateIn = {
+  merchant_id: string;
+  name: string;
+  external_code?: string;
+};
+
+export type ItemCreateIn = {
+  merchant_id: string;
+  category_id: string;
+  name: string;
+  description?: string;
+  price: number;
+  status?: "AVAILABLE" | "UNAVAILABLE";
+  external_code?: string;
+  image_path?: string;
+};
+
+export type ItemUpdateIn = {
+  name?: string;
+  description?: string;
+  image_path?: string;
+  external_code?: string;
+};
+
+export type UploadImageOut = {
+  path?: string;
+  [key: string]: any;
+};
+
+export type OptionGroup = {
+  id?: string;
+  name?: string;
+  min?: number;
+  max?: number;
+  status?: string;
+  options?: any[];
+  [key: string]: any;
+};
+
+export type OptionGroupCreateIn = {
+  merchant_id: string;
+  name: string;
+  min_choices?: number;
+  max_choices?: number;
+  external_code?: string;
+};
+
+export type OptionCreateIn = {
+  merchant_id: string;
+  option_group_id: string;
+  name: string;
+  price: number;
+  status?: "AVAILABLE" | "UNAVAILABLE";
+  image_path?: string;
+  external_code?: string;
+};
+
 // =============================================================================
 // Merchant — interrupções + horários
 // =============================================================================
