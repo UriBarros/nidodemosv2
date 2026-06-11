@@ -125,10 +125,16 @@ async def reconnect_client(
 @router.get("/{client_id}/poll", response_model=UserCodePollOut)
 async def poll_client_authorization(
     client_id: uuid.UUID,
+    authorization_code: str | None = None,
     db: AsyncSession = Depends(get_db),
     tenant_id: uuid.UUID = Depends(get_current_tenant),
 ) -> UserCodePollOut:
-    """Frontend chama isto a cada ~5s até status=authorized ou expired."""
+    """Frontend chama isto a cada ~5s até status=authorized ou expired.
+
+    Se authorization_code passado: usa ele em vez do user_code da sessão.
+    Útil quando iFood gera novo authorizationCode no modal 'Aplicativo
+    autorizado' do Portal Parceiro (diferente do userCode original).
+    """
     client = await _get_client_or_404(db, tenant_id, client_id)
 
     # Pega a session pendente mais recente do client
@@ -159,11 +165,14 @@ async def poll_client_authorization(
             client_status=client.status,
         )
 
-    # Polling no iFood
+    # Polling no iFood — usa authorization_code passado se houver
+    # (iFood gera novo código no Portal após autorização que é diferente
+    # do user_code original).
+    code_to_use = authorization_code or session_obj.user_code
     ifood = IFoodUserCodeClient()
     try:
         tokens = await ifood.poll(
-            authorization_code=session_obj.user_code,
+            authorization_code=code_to_use,
             authorization_code_verifier=session_obj.authorization_code_verifier or "",
         )
     except AuthorizationPending:

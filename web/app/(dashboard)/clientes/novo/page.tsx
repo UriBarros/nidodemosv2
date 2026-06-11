@@ -38,6 +38,8 @@ export default function NovoClientePage() {
   const [session, setSession] = useState<UserCodeSession | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
   const [pollStatus, setPollStatus] = useState<UserCodePoll | null>(null);
+  const [manualCode, setManualCode] = useState("");
+  const [manualSubmitting, setManualSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -104,6 +106,31 @@ export default function NovoClientePage() {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
   }, [step, clientId]);
+
+  async function submitManualCode() {
+    if (!clientId || !manualCode.trim()) return;
+    setManualSubmitting(true);
+    try {
+      const res = await apiGet<UserCodePoll>(
+        `/clients/${clientId}/poll?authorization_code=${encodeURIComponent(manualCode.trim())}`,
+      );
+      setPollStatus(res);
+      if (res.status === "authorized") {
+        setStep("done");
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        toast.success(res.message ?? "Cliente conectado!");
+      } else if (res.status === "expired" || res.status === "error") {
+        setStep("error");
+        setErrorMsg(res.message ?? "Erro");
+      } else {
+        toast.info("Ainda pendente. Confere o código e tenta de novo.");
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "Falha");
+    } finally {
+      setManualSubmitting(false);
+    }
+  }
 
   function copyUserCode() {
     if (!session) return;
@@ -292,6 +319,37 @@ export default function NovoClientePage() {
               <p className="text-xs text-muted-foreground">
                 Manda link via WhatsApp. Lojista abre, faz login iFood, confirma na aba
                 Integrações. Pronto.
+              </p>
+            </div>
+
+            {/* Campo manual pra colar authorizationCode do Portal iFood */}
+            <div className="space-y-2 rounded-md border-2 border-primary/30 bg-primary/5 p-3">
+              <Label htmlFor="manual-code" className="text-xs uppercase">
+                Já autorizou no Portal? Cola aqui o código que apareceu
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  id="manual-code"
+                  value={manualCode}
+                  onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+                  placeholder="XXXX-YYYY"
+                  className="font-mono uppercase"
+                  maxLength={9}
+                />
+                <Button
+                  onClick={submitManualCode}
+                  disabled={manualSubmitting || manualCode.length < 9}
+                >
+                  {manualSubmitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Confirmar"
+                  )}
+                </Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Após autorizar no Portal iFood, aparece um modal com código
+                tipo "ABCD-1234". Cola ele aqui.
               </p>
             </div>
 
