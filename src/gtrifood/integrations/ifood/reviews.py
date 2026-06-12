@@ -1,4 +1,9 @@
-"""Endpoints do módulo Review da API iFood."""
+"""Endpoints do módulo Review da API iFood — v2.0.
+
+Mudança v1.0 → v2.0:
+- Path passa de /review/v1.0/... pra /review/v2.0/...
+- Novos endpoints: GET /reviews/{id} (detalhes) e GET /summary (agregado)
+"""
 
 from __future__ import annotations
 
@@ -20,10 +25,7 @@ class ReviewsAPI:
         sort: str = "CREATED_AT",
         sort_direction: str = "DESC",
     ) -> dict[str, Any]:
-        """Lista avaliações paginadas.
-
-        Resposta tem `reviews: [...]`, `total`, `page`, `pageSize`.
-        """
+        """GET /review/v2.0/merchants/{id}/reviews — lista paginada."""
         params = {
             "page": page,
             "pageSize": page_size,
@@ -31,8 +33,24 @@ class ReviewsAPI:
             "sortDirection": sort_direction,
         }
         return await self._client.get(
-            f"/review/v1.0/merchants/{merchant_id}/reviews",
+            f"/review/v2.0/merchants/{merchant_id}/reviews",
             params=params,
+        )
+
+    async def get_review(
+        self,
+        merchant_id: str,
+        review_id: str,
+    ) -> dict[str, Any]:
+        """GET /review/v2.0/merchants/{id}/reviews/{reviewId} — detalhes."""
+        return await self._client.get(
+            f"/review/v2.0/merchants/{merchant_id}/reviews/{review_id}"
+        )
+
+    async def get_summary(self, merchant_id: str) -> dict[str, Any]:
+        """GET /review/v2.0/merchants/{id}/summary — agregado (count, avg score)."""
+        return await self._client.get(
+            f"/review/v2.0/merchants/{merchant_id}/summary"
         )
 
     async def answer(
@@ -41,8 +59,8 @@ class ReviewsAPI:
         review_id: str,
         text: str,
     ) -> None:
-        """Responde uma avaliação."""
+        """POST /review/v2.0/merchants/{id}/reviews/{reviewId}/answers."""
         await self._client.post(
-            f"/review/v1.0/merchants/{merchant_id}/reviews/{review_id}/answers",
+            f"/review/v2.0/merchants/{merchant_id}/reviews/{review_id}/answers",
             json={"text": text},
         )
