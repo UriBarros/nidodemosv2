@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import uuid
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -62,12 +64,23 @@ async def count_orders(
     if status:
         stmt = stmt.where(Order.status == status)
     if begin:
-        stmt = stmt.where(Order.created_at_ifood >= begin)
+        try:
+            dt = datetime.fromisoformat(begin.replace("Z", "+00:00"))
+            stmt = stmt.where(Order.created_at_ifood >= dt)
+        except ValueError as e:
+            raise HTTPException(400, f"begin inválido: {e}") from e
     if end:
-        stmt = stmt.where(Order.created_at_ifood <= end)
+        try:
+            dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+            stmt = stmt.where(Order.created_at_ifood <= dt)
+        except ValueError as e:
+            raise HTTPException(400, f"end inválido: {e}") from e
 
-    result = await db.execute(stmt)
-    return CountOut(count=result.scalar_one())
+    try:
+        result = await db.execute(stmt)
+        return CountOut(count=result.scalar_one())
+    except Exception as e:
+        raise HTTPException(500, f"erro na query: {type(e).__name__}: {e}") from e
 
 
 @router.get("/{order_id}", response_model=OrderOut)

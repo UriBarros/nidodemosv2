@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, desc, func, select
@@ -65,9 +66,17 @@ async def reviews_summary(
     if merchant_id:
         stmt = stmt.where(Review.merchant_id == merchant_id)
     if begin:
-        stmt = stmt.where(Review.created_at_ifood >= begin)
+        try:
+            dt = datetime.fromisoformat(begin.replace("Z", "+00:00"))
+            stmt = stmt.where(Review.created_at_ifood >= dt)
+        except ValueError as e:
+            raise HTTPException(400, f"begin inválido: {e}") from e
     if end:
-        stmt = stmt.where(Review.created_at_ifood <= end)
+        try:
+            dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+            stmt = stmt.where(Review.created_at_ifood <= dt)
+        except ValueError as e:
+            raise HTTPException(400, f"end inválido: {e}") from e
 
     result = (await db.execute(stmt)).one()
     total = int(result[0] or 0)
