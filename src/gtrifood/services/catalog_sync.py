@@ -1,10 +1,6 @@
-"""Sincroniza cardápio (categorias + itens) do iFood — Catalog API v2.0.
+"""Sincroniza cardápio (categorias + itens) do iFood pra tabelas locais.
 
-Estratégia (atualizada):
-1. GET /catalog/v2.0/merchants/{id}/categories?includeItems=true
-2. Pra cada categoria: UPSERT em catalog_categories
-3. Pra cada item embutido: UPSERT em catalog_items (raw_data completa)
-
+Usado pelo endpoint POST /catalog/sync?merchant_id=X.
 UPSERT idempotente por (tenant_id, ifood_*_id).
 """
 
@@ -27,22 +23,21 @@ logger = get_logger(__name__)
 
 
 async def sync_catalog_for_merchant(merchant_id: uuid.UUID) -> dict[str, int]:
-    """Sincroniza catálogo de um merchant.
+    """Sincroniza catálogo de um merchant (1 = primeiro catálogo retornado).
 
-    Retorna dict com counts: {categories: N, items: M}.
+    Retorna dict com counts: { categories: N, items: M }.
     """
     async with get_session() as session:
         result = await session.execute(
-            select(
-                Merchant.tenant_id, Merchant.ifood_merchant_id, Merchant.client_id
-            ).where(Merchant.id == merchant_id)
+            select(Merchant.tenant_id, Merchant.ifood_merchant_id, Merchant.client_id)
+            .where(Merchant.id == merchant_id)
         )
         row = result.first()
         if not row:
             raise ValueError(f"merchant {merchant_id} não encontrado")
         tenant_id, ifood_merchant_id, client_id = row
 
-    # Token correto
+    # Escolhe token_provider: client (Distribuída) ou client_credentials (Centralizada)
     if client_id:
         from gtrifood.services.client_tokens import get_or_refresh_access_token
 
@@ -55,18 +50,22 @@ async def sync_catalog_for_merchant(merchant_id: uuid.UUID) -> dict[str, int]:
 
     api = CatalogAPI(ifood)
 
-    # Catalog ID (raramente usado, mas mantemos referência)
-    catalog_id = ""
-    try:
-        catalogs = await api.list_catalogs(ifood_merchant_id)
-        if catalogs:
-            catalog_id = catalogs[0].get("catalogId") or catalogs[0].get("id", "")
-    except IFoodAPIError as e:
-        logger.warning("list_catalogs_falhou", status=e.status_code)
+    # 1. Lista catálogos. Usa o primeiro (apps de loja real costumam ter 1).
+    catalogs = await api.list_catalogs(ifood_merchant_id)
+    if not catalogs:
+        logger.warning("nenhum_catalog_no_ifood", merchant_id=str(merchant_id))
+        return {"categories": 0, "items": 0}
 
-    # Lista categorias com items embutidos
+    catalog_id = catalogs[0].get("catalogId") or catalogs[0].get("id")
+    if not catalog_id:
+        logger.error("catalog_sem_id", merchant_id=str(merchant_id), payload=catalogs[0])
+        return {"categories": 0, "items": 0}
+
+    # 2. Lista categorias (com items embutidos)
     try:
-        categories = await api.list_categories(ifood_merchant_id, include_items=True)
+        categories = await api.list_categories(
+            ifood_merchant_id, catalog_id, include_items=True
+        )
     except IFoodAPIError as e:
         logger.error(
             "catalog_categories_falhou",
@@ -79,6 +78,9 @@ async def sync_catalog_for_merchant(merchant_id: uuid.UUID) -> dict[str, int]:
     item_count = 0
 
     async with get_session() as session:
+        # Cache: ifood_category_id -> local category UUID
+        category_map: dict[str, uuid.UUID] = {}
+
         for seq, cat in enumerate(categories):
             ifood_cat_id = cat.get("id") or cat.get("categoryId")
             if not ifood_cat_id:
@@ -106,16 +108,17 @@ async def sync_catalog_for_merchant(merchant_id: uuid.UUID) -> dict[str, int]:
                 },
             ).returning(CatalogCategory.id)
             cat_id_local = (await session.execute(cat_stmt)).scalar_one()
+            category_map[ifood_cat_id] = cat_id_local
             cat_count += 1
 
-            # Items da categoria
+            # Itens embutidos
             for item in cat.get("items", []) or []:
                 item_count += await _upsert_item(
                     session,
                     tenant_id=tenant_id,
                     merchant_id=merchant_id,
                     category_id=cat_id_local,
-                    item_payload=item,
+                    item=item,
                 )
 
     logger.info(
@@ -132,59 +135,31 @@ async def _upsert_item(
     tenant_id: uuid.UUID,
     merchant_id: uuid.UUID,
     category_id: uuid.UUID,
-    item_payload: dict[str, Any],
+    item: dict[str, Any],
 ) -> int:
-    """UPSERT de um item.
-
-    Aceita 2 formatos do iFood:
-    - Flat: {id, name, price: {value}, ...} (legado)
-    - Nested: {item: {id, price, ...}, products: [{name, description}], ...} (v2.0)
-    """
-    # Detecta estrutura nested vs flat
-    if "item" in item_payload and isinstance(item_payload["item"], dict):
-        # Nested (v2.0)
-        item_meta = item_payload["item"]
-        products = item_payload.get("products", [])
-        product = products[0] if products else {}
-        ifood_item_id = item_meta.get("id")
-        name = product.get("name") or item_meta.get("name") or ifood_item_id
-        description = product.get("description")
-        price = (item_meta.get("price") or {}).get("value")
-        status = item_meta.get("status", "AVAILABLE")
-        external_code = item_meta.get("externalCode")
-        image_path = item_meta.get("imagePath") or product.get("imagePath")
-        product_id = product.get("id")
-    else:
-        # Flat (legado)
-        ifood_item_id = item_payload.get("id") or item_payload.get("itemId")
-        name = item_payload.get("name") or ifood_item_id
-        description = item_payload.get("description")
-        price_obj = item_payload.get("price") or {}
-        price = (
-            price_obj.get("value") if isinstance(price_obj, dict) else price_obj
-        )
-        status = (item_payload.get("status") or "AVAILABLE").upper()
-        external_code = item_payload.get("externalCode")
-        image_path = item_payload.get("imagePath")
-        product_id = item_payload.get("productId")
-
+    """UPSERT de um item. Retorna 1 se persistiu, 0 se ignorado."""
+    ifood_item_id = item.get("id") or item.get("itemId")
     if not ifood_item_id:
         return 0
+
+    price_obj = item.get("price") or {}
+    price = price_obj.get("value") if isinstance(price_obj, dict) else price_obj
+    original = price_obj.get("originalValue") if isinstance(price_obj, dict) else None
 
     stmt = insert(CatalogItem).values(
         tenant_id=tenant_id,
         merchant_id=merchant_id,
         category_id=category_id,
         ifood_item_id=ifood_item_id,
-        ifood_product_id=product_id,
-        name=name,
-        description=description,
-        external_code=external_code,
+        ifood_product_id=item.get("productId"),
+        name=item.get("name") or ifood_item_id,
+        description=item.get("description"),
+        external_code=item.get("externalCode"),
         price=Decimal(str(price)) if price is not None else None,
-        original_price=None,
-        status=(status or "AVAILABLE").upper(),
-        image_path=image_path,
-        raw_data=item_payload,
+        original_price=Decimal(str(original)) if original is not None else None,
+        status=(item.get("status") or "AVAILABLE").upper(),
+        image_path=item.get("imagePath"),
+        raw_data=item,
     )
     stmt = stmt.on_conflict_do_update(
         index_elements=["tenant_id", "ifood_item_id"],
@@ -194,6 +169,7 @@ async def _upsert_item(
             "description": stmt.excluded.description,
             "external_code": stmt.excluded.external_code,
             "price": stmt.excluded.price,
+            "original_price": stmt.excluded.original_price,
             "status": stmt.excluded.status,
             "image_path": stmt.excluded.image_path,
             "raw_data": stmt.excluded.raw_data,

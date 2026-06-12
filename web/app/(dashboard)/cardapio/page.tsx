@@ -52,7 +52,6 @@ export default function CardapioPage() {
   const [itemPrice, setItemPrice] = useState("");
   const [itemCategoryId, setItemCategoryId] = useState<string>("");
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [complementsForItem, setComplementsForItem] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
 
@@ -593,31 +592,16 @@ export default function CardapioPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            toggleStatus.mutate({ id: it.id, current: it.status })
-                          }
-                          disabled={toggleStatus.isPending}
-                        >
-                          {it.status === "AVAILABLE" ? "Pausar" : "Ativar"}
-                        </Button>
-                        <Button
-                          variant={
-                            complementsForItem === it.id ? "default" : "outline"
-                          }
-                          size="sm"
-                          onClick={() =>
-                            setComplementsForItem(
-                              complementsForItem === it.id ? null : it.id,
-                            )
-                          }
-                        >
-                          Complementos
-                        </Button>
-                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          toggleStatus.mutate({ id: it.id, current: it.status })
+                        }
+                        disabled={toggleStatus.isPending}
+                      >
+                        {it.status === "AVAILABLE" ? "Pausar" : "Ativar"}
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -628,10 +612,7 @@ export default function CardapioPage() {
       </Card>
 
       {/* Complementos */}
-      <CatalogComplements
-        itemId={complementsForItem}
-        merchantId={resolveMerchantId()}
-      />
+      <CatalogComplements merchantId={resolveMerchantId()} />
     </div>
   );
 }

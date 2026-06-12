@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Save, Upload } from "lucide-react";
+import { Loader2, Plus, Save, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { apiGet, apiPatch, apiPost, apiUpload } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
@@ -14,20 +14,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 interface Props {
-  /** ID local (UUID) do item ao qual os grupos pertencem. */
-  itemId: string | null;
-  /** ID do merchant (precisa pra mutations de status/preço de opção). */
   merchantId: string | null;
 }
 
 /**
- * Gestão de grupos de complementos (option groups) e suas opções,
- * vinculados a UM item específico (API v2.0 do iFood).
- *
+ * Gestão de grupos de complementos (option groups) e suas opções.
  * Atende Cenário 2 (criar grupo + 2 complementos) e Cenário 3
  * (pausar complemento) do checklist iFood Catalog.
  */
-export function CatalogComplements({ itemId, merchantId }: Props) {
+export function CatalogComplements({ merchantId }: Props) {
   const qc = useQueryClient();
   const [showGroupForm, setShowGroupForm] = useState(false);
   const [groupName, setGroupName] = useState("");
@@ -39,19 +34,18 @@ export function CatalogComplements({ itemId, merchantId }: Props) {
   const [optPrice, setOptPrice] = useState("");
 
   const groups = useQuery({
-    queryKey: ["option-groups", itemId],
+    queryKey: ["option-groups", merchantId],
     queryFn: () =>
       apiGet<OptionGroup[]>("/catalog/option-groups", {
         merchant_id: merchantId ?? undefined,
-        item_id: itemId ?? undefined,
       }),
-    enabled: !!itemId && !!merchantId,
+    enabled: !!merchantId,
   });
 
   const createGroup = useMutation({
     mutationFn: () => {
-      if (!merchantId || !itemId) throw new Error("Selecione item primeiro");
-      return apiPost(`/catalog/option-groups?item_id=${itemId}`, {
+      if (!merchantId) throw new Error("Selecione merchant");
+      return apiPost("/catalog/option-groups", {
         merchant_id: merchantId,
         name: groupName.trim(),
         min_choices: parseInt(groupMin) || 0,
@@ -64,17 +58,17 @@ export function CatalogComplements({ itemId, merchantId }: Props) {
       setGroupName("");
       setGroupMin("0");
       setGroupMax("1");
-      qc.invalidateQueries({ queryKey: ["option-groups", itemId] });
+      qc.invalidateQueries({ queryKey: ["option-groups", merchantId] });
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha"),
   });
 
   const createOption = useMutation({
     mutationFn: ({ groupId }: { groupId: string }) => {
-      if (!merchantId || !itemId) throw new Error("Selecione item");
+      if (!merchantId) throw new Error("Selecione merchant");
       const price = parseFloat(optPrice.replace(",", "."));
       if (isNaN(price)) throw new Error("Preço inválido");
-      return apiPost(`/catalog/options?item_id=${itemId}`, {
+      return apiPost("/catalog/options", {
         merchant_id: merchantId,
         option_group_id: groupId,
         name: optName.trim(),
@@ -86,7 +80,7 @@ export function CatalogComplements({ itemId, merchantId }: Props) {
       setAddingToGroup(null);
       setOptName("");
       setOptPrice("");
-      qc.invalidateQueries({ queryKey: ["option-groups", itemId] });
+      qc.invalidateQueries({ queryKey: ["option-groups", merchantId] });
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha"),
   });
@@ -100,7 +94,7 @@ export function CatalogComplements({ itemId, merchantId }: Props) {
       });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["option-groups", itemId] });
+      qc.invalidateQueries({ queryKey: ["option-groups", merchantId] });
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha"),
   });
@@ -118,12 +112,12 @@ export function CatalogComplements({ itemId, merchantId }: Props) {
     },
     onSuccess: () => {
       toast.success("Foto enviada");
-      qc.invalidateQueries({ queryKey: ["option-groups", itemId] });
+      qc.invalidateQueries({ queryKey: ["option-groups", merchantId] });
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha"),
   });
 
-  if (!itemId) {
+  if (!merchantId) {
     return (
       <Card>
         <CardHeader>
@@ -131,8 +125,7 @@ export function CatalogComplements({ itemId, merchantId }: Props) {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Selecione um item pra ver os grupos de complementos. Na API v2.0
-            do iFood, complementos pertencem a um item específico.
+            Selecione um merchant pra ver os grupos de complementos.
           </p>
         </CardContent>
       </Card>
@@ -143,7 +136,7 @@ export function CatalogComplements({ itemId, merchantId }: Props) {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-base">
-          Complementos do item ({groups.data?.length ?? 0} grupo[s])
+          Complementos ({groups.data?.length ?? 0} grupo[s])
         </CardTitle>
         <Button
           size="sm"
@@ -217,7 +210,7 @@ export function CatalogComplements({ itemId, merchantId }: Props) {
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         ) : !groups.data?.length ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            Nenhum grupo cadastrado neste item.
+            Nenhum grupo cadastrado. Crie um pra começar.
           </p>
         ) : (
           groups.data.map((g, gi) => {
