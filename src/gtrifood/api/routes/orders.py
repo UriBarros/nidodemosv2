@@ -52,6 +52,8 @@ async def count_orders(
     begin: str | None = Query(default=None, description="ISO datetime/date — created_at_ifood >= begin"),
     end: str | None = Query(default=None, description="ISO datetime/date — created_at_ifood <= end"),
 ) -> CountOut:
+    from datetime import datetime
+
     stmt = select(func.count(Order.id)).where(Order.tenant_id == tenant_id)
     if client_id:
         stmt = stmt.join(Merchant, Order.merchant_id == Merchant.id).where(
@@ -61,13 +63,26 @@ async def count_orders(
         stmt = stmt.where(Order.merchant_id == merchant_id)
     if status:
         stmt = stmt.where(Order.status == status)
-    if begin:
-        stmt = stmt.where(Order.created_at_ifood >= begin)
-    if end:
-        stmt = stmt.where(Order.created_at_ifood <= end)
 
-    result = await db.execute(stmt)
-    return CountOut(count=result.scalar_one())
+    # Parse begin/end pra datetime — aceita ISO 8601 (com ou sem Z)
+    if begin:
+        try:
+            dt = datetime.fromisoformat(begin.replace("Z", "+00:00"))
+            stmt = stmt.where(Order.created_at_ifood >= dt)
+        except ValueError as e:
+            raise HTTPException(400, f"begin inválido: {e}") from e
+    if end:
+        try:
+            dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+            stmt = stmt.where(Order.created_at_ifood <= dt)
+        except ValueError as e:
+            raise HTTPException(400, f"end inválido: {e}") from e
+
+    try:
+        result = await db.execute(stmt)
+        return CountOut(count=result.scalar_one())
+    except Exception as e:
+        raise HTTPException(500, f"erro na query: {type(e).__name__}: {e}") from e
 
 
 @router.get("/{order_id}", response_model=OrderDetailOut)
