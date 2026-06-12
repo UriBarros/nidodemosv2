@@ -125,11 +125,18 @@ async def reconnect_client(
 @router.get("/{client_id}/poll", response_model=UserCodePollOut)
 async def poll_client_authorization(
     client_id: uuid.UUID,
+    authorization_code: str | None = None,
     db: AsyncSession = Depends(get_db),
     tenant_id: uuid.UUID = Depends(get_current_tenant),
 ) -> UserCodePollOut:
-    """Frontend chama isto a cada ~5s até status=authorized ou expired."""
+    """Frontend chama isto a cada ~5s até status=authorized ou expired.
+
+    Se authorization_code passado: usa ele em vez do user_code original.
+    Útil quando iFood gera authorizationCode novo no modal 'Aplicativo
+    autorizado' (diferente do userCode).
+    """
     client = await _get_client_or_404(db, tenant_id, client_id)
+    manual_mode = authorization_code is not None and authorization_code.strip()
 
     # Pega a session pendente mais recente do client
     result = await db.execute(
@@ -159,17 +166,33 @@ async def poll_client_authorization(
             client_status=client.status,
         )
 
-    # Polling no iFood
+    # Polling no iFood — usa código manual se passado, senão user_code original
+    code_to_use = (
+        authorization_code.strip() if manual_mode else session_obj.user_code
+    )
     ifood = IFoodUserCodeClient()
     try:
         tokens = await ifood.poll(
-            authorization_code=session_obj.user_code,
+            authorization_code=code_to_use,
             authorization_code_verifier=session_obj.authorization_code_verifier or "",
         )
     except AuthorizationPending:
         session_obj.last_polled_at = now
         session_obj.poll_count += 1
         await db.commit()
+        # Em manual_mode, AuthorizationPending = código manual rejeitado.
+        # Devolve mensagem clara em vez de "ainda esperando".
+        if manual_mode:
+            return UserCodePollOut(
+                session_id=session_obj.id,
+                status="error",
+                message=(
+                    f"iFood rejeitou o código '{code_to_use}'. "
+                    "Confere se é o código que apareceu APÓS autorizar no Portal "
+                    "(não o que enviaste pra autorizar). Pode também ter expirado."
+                ),
+                client_status=client.status,
+            )
         return UserCodePollOut(
             session_id=session_obj.id,
             status="pending",

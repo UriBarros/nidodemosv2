@@ -182,6 +182,15 @@ class IFoodUserCodeClient:
         if response.status_code == 200:
             return self._parse_token(response.json())
 
+        # Log resposta completa pra debug
+        import sys
+
+        print(
+            f"[iFood poll] status={response.status_code} body={response.text}",
+            file=sys.stderr,
+            flush=True,
+        )
+
         # iFood usa códigos de erro custom no body (não segue RFC OAuth2 device flow).
         # Observações empíricas com app Distribuído de TEST:
         # - Enquanto lojista NÃO autorizou: 401 Unauthorized com
