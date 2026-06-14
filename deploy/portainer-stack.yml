@@ -9,7 +9,7 @@ version: "3.8"
 
 services:
   api:
-    image: ghcr.io/uribarros/nidodemosv2:sha-b230ee4
+    image: ghcr.io/uribarros/nidodemosv2:sha-1fff823
     environment:
       IFOOD_CLIENT_ID: ${IFOOD_CLIENT_ID}
       IFOOD_CLIENT_SECRET: ${IFOOD_CLIENT_SECRET}
@@ -54,7 +54,7 @@ services:
         - "traefik.http.services.gtrifood-api.loadbalancer.server.port=8000"
 
   worker:
-    image: ghcr.io/uribarros/nidodemosv2:sha-b230ee4
+    image: ghcr.io/uribarros/nidodemosv2:sha-1fff823
     environment:
       IFOOD_CLIENT_ID: ${IFOOD_CLIENT_ID}
       IFOOD_CLIENT_SECRET: ${IFOOD_CLIENT_SECRET}
@@ -74,7 +74,7 @@ services:
       restart_policy: { condition: any, delay: 10s }
 
   web:
-    image: ghcr.io/uribarros/nidodemosv2-web:sha-b230ee4
+    image: ghcr.io/uribarros/nidodemosv2-web:sha-1fff823
     environment:
       NODE_ENV: production
     networks:
