@@ -271,7 +271,67 @@ async def create_category(
 
 
 # =============================================================================
-# Criar item
+# Criar / atualizar item completo (PUT /items com optionGroups inline)
+# =============================================================================
+@router.post("/items/full", status_code=201)
+async def upsert_item_full(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> dict:
+    """Cria ou atualiza item completo via PUT /items.
+
+    Body esperado:
+    {
+      "merchant_id": "<uuid local>",
+      "category_id": "<uuid local>" (resolvido pra ifood_category_id),
+      "item": { ...payload iFood completo com product/price/optionGroups... }
+    }
+    """
+    merchant_id = payload.get("merchant_id")
+    category_local_id = payload.get("category_id")
+    item_payload = payload.get("item")
+    if not (merchant_id and category_local_id and isinstance(item_payload, dict)):
+        raise HTTPException(
+            400,
+            "payload requer merchant_id, category_id e item (dict)",
+        )
+
+    try:
+        merchant_uuid = uuid.UUID(str(merchant_id))
+        category_uuid = uuid.UUID(str(category_local_id))
+    except ValueError as e:
+        raise HTTPException(400, f"id inválido: {e}") from e
+
+    cat_row = await db.execute(
+        select(CatalogCategory.ifood_category_id).where(
+            CatalogCategory.id == category_uuid,
+            CatalogCategory.tenant_id == tenant_id,
+        )
+    )
+    ifood_cat = cat_row.scalar_one_or_none()
+    if not ifood_cat:
+        raise HTTPException(404, "categoria não encontrada")
+
+    _, info, ifood = await _merchant_ctx(db, tenant_id, merchant_uuid)
+    api = CatalogAPI(ifood)
+
+    try:
+        result = await api.upsert_item(
+            info["ifood_merchant_id"],
+            category_id=ifood_cat,
+            item=item_payload,
+        )
+    except IFoodAPIError as e:
+        raise HTTPException(
+            status_code=400 if 400 <= e.status_code < 500 else 502,
+            detail=f"iFood: {e.body}",
+        ) from e
+    return result or {"status": "upserted"}
+
+
+# =============================================================================
+# Criar item (atalho com payload mínimo — chama PUT /items sob o capô)
 # =============================================================================
 @router.post("/items", status_code=201)
 async def create_item(
@@ -407,30 +467,47 @@ async def list_option_groups(
         raise HTTPException(502, f"iFood: {e.body}") from e
 
 
-@router.post("/option-groups", status_code=201)
+@router.post("/option-groups", status_code=501)
 async def create_option_group(
     payload: OptionGroupCreateIn,
     db: AsyncSession = Depends(get_db),
     tenant_id: uuid.UUID = Depends(get_current_tenant),
 ) -> dict:
-    if not payload.name.strip():
-        raise HTTPException(400, "nome obrigatório")
-    _, info, ifood = await _merchant_ctx(db, tenant_id, payload.merchant_id)
+    """DEPRECATED na Catalog v2.0: não existe POST /optionGroups standalone.
+
+    Grupos nascem dentro de PUT /items com optionGroups + options aninhados.
+    Use POST /catalog/items/full enviando o item completo.
+    """
+    raise HTTPException(
+        status_code=501,
+        detail=(
+            "iFood Catalog v2.0 não suporta criar optionGroup standalone. "
+            "Use POST /catalog/items/full com optionGroups aninhados no payload."
+        ),
+    )
+
+
+@router.patch("/option-groups/{option_group_id}/status")
+async def update_option_group_status(
+    option_group_id: str,
+    merchant_id: uuid.UUID = Query(...),
+    status: str = Query(..., description="AVAILABLE | UNAVAILABLE"),
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> dict:
+    """Pausa/ativa um grupo de complementos inteiro."""
+    new_status = status.upper()
+    if new_status not in ("AVAILABLE", "UNAVAILABLE"):
+        raise HTTPException(400, "status deve ser AVAILABLE ou UNAVAILABLE")
+    _, info, ifood = await _merchant_ctx(db, tenant_id, merchant_id)
     api = CatalogAPI(ifood)
     try:
-        result = await api.create_option_group(
-            info["ifood_merchant_id"],
-            name=payload.name.strip(),
-            min_choices=payload.min_choices,
-            max_choices=payload.max_choices,
-            external_code=payload.external_code,
+        result = await api.update_option_group_status(
+            info["ifood_merchant_id"], option_group_id, new_status
         )
     except IFoodAPIError as e:
-        raise HTTPException(
-            status_code=400 if 400 <= e.status_code < 500 else 502,
-            detail=f"iFood: {e.body}",
-        ) from e
-    return result or {"status": "created"}
+        raise HTTPException(502, f"iFood: {e.body}") from e
+    return result or {"status": "updated"}
 
 
 @router.post("/options", status_code=201)
