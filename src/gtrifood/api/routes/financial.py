@@ -11,10 +11,35 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gtrifood.api.deps import get_current_tenant, get_db
 from gtrifood.api.schemas import FinancialEventOut, SyncResultOut
+from gtrifood.integrations.ifood.client import IFoodAPIError, IFoodClient
+from gtrifood.integrations.ifood.financial import FinancialAPI
 from gtrifood.models.db import FinancialEvent, Merchant
 from gtrifood.services.financial_sync import sync_financial_for_merchant
 
 router = APIRouter(prefix="/financial", tags=["financial"])
+
+
+async def _ifood_for_merchant(
+    db: AsyncSession, tenant_id: uuid.UUID, merchant_id: uuid.UUID
+) -> tuple[str, IFoodClient]:
+    """Resolve merchant local id -> (ifood_merchant_id, client pronto)."""
+    row = await db.execute(
+        select(Merchant.ifood_merchant_id, Merchant.client_id).where(
+            Merchant.id == merchant_id, Merchant.tenant_id == tenant_id
+        )
+    )
+    rec = row.first()
+    if not rec:
+        raise HTTPException(404, "merchant não encontrado")
+    ifood_merchant_id, client_id = rec
+    if client_id:
+        from gtrifood.services.client_tokens import get_or_refresh_access_token
+
+        async def _tp() -> str:
+            return await get_or_refresh_access_token(client_id)
+
+        return ifood_merchant_id, IFoodClient(token_provider=_tp)
+    return ifood_merchant_id, IFoodClient()
 
 
 @router.get("", response_model=list[FinancialEventOut])
@@ -89,3 +114,74 @@ async def trigger_financial_sync(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     return SyncResultOut(inserted=count, message=f"{count} evento(s) financeiro(s) sincronizado(s)")
+
+
+# =============================================================================
+# Pass-through pra Financial v3.0 (consultas live, sem persistir)
+# =============================================================================
+@router.get("/reconciliation")
+async def get_reconciliation_live(
+    merchant_id: uuid.UUID,
+    begin: date,
+    end: date,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> dict | list:
+    """Conciliação consolidada do período (live via Financial v3.0)."""
+    ifood_id, ifood = await _ifood_for_merchant(db, tenant_id, merchant_id)
+    api = FinancialAPI(ifood)
+    try:
+        return await api.get_reconciliation(ifood_id, begin, end)
+    except IFoodAPIError as e:
+        raise HTTPException(502, f"iFood: {e.body}") from e
+
+
+@router.get("/settlements")
+async def list_settlements_live(
+    merchant_id: uuid.UUID,
+    begin: date,
+    end: date,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> list[dict]:
+    """Repasses pagos no período (live)."""
+    ifood_id, ifood = await _ifood_for_merchant(db, tenant_id, merchant_id)
+    api = FinancialAPI(ifood)
+    try:
+        return await api.list_settlements(ifood_id, begin, end)
+    except IFoodAPIError as e:
+        raise HTTPException(502, f"iFood: {e.body}") from e
+
+
+@router.post("/reconciliation/on-demand", status_code=202)
+async def request_reconciliation_on_demand(
+    merchant_id: uuid.UUID,
+    begin: date,
+    end: date,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> dict:
+    """Agenda geração de arquivo de conciliação. Retorna {requestId: ...}."""
+    ifood_id, ifood = await _ifood_for_merchant(db, tenant_id, merchant_id)
+    api = FinancialAPI(ifood)
+    try:
+        result = await api.request_reconciliation_on_demand(ifood_id, begin, end)
+    except IFoodAPIError as e:
+        raise HTTPException(502, f"iFood: {e.body}") from e
+    return result or {"status": "requested"}
+
+
+@router.get("/reconciliation/on-demand/{request_id}")
+async def fetch_reconciliation_file(
+    request_id: str,
+    merchant_id: uuid.UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> dict:
+    """Busca metadados/URL do arquivo de conciliação gerado."""
+    ifood_id, ifood = await _ifood_for_merchant(db, tenant_id, merchant_id)
+    api = FinancialAPI(ifood)
+    try:
+        return await api.fetch_reconciliation_file(ifood_id, request_id)
+    except IFoodAPIError as e:
+        raise HTTPException(502, f"iFood: {e.body}") from e
