@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Save, Upload, X } from "lucide-react";
+import { Loader2, Plus, Save } from "lucide-react";
 import { toast } from "sonner";
-import { apiGet, apiPatch, apiPost, apiUpload } from "@/lib/api";
+import { apiGet, apiPatch, apiPost } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
-import type { OptionGroup, UploadImageOut } from "@/lib/types";
+import type { CatalogItem, OptionGroup } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,10 +17,21 @@ interface Props {
   merchantId: string | null;
 }
 
+interface OptionDraft {
+  name: string;
+  price: string;
+}
+
 /**
- * Gestão de grupos de complementos (option groups) e suas opções.
- * Atende Cenário 2 (criar grupo + 2 complementos) e Cenário 3
- * (pausar complemento) do checklist iFood Catalog.
+ * Gestão de grupos de complementos (option groups) + options.
+ *
+ * Catalog v2.0 do iFood não tem POST /optionGroups standalone: grupo nasce
+ * dentro de PUT /items com options aninhadas. UI:
+ * - "Novo grupo" exige escolher item ancora; backend monta payload completo
+ *   e faz PUT /items via /catalog/option-groups/add-to-item
+ * - "Adicionar option": POST /optionGroups/{ogId}/options (existing group)
+ * - "Pausar grupo": PATCH /optionGroups/{ogId}/status
+ * - "Pausar/Ativar option": batch PATCH /options/status
  */
 export function CatalogComplements({ merchantId }: Props) {
   const qc = useQueryClient();
@@ -28,6 +39,11 @@ export function CatalogComplements({ merchantId }: Props) {
   const [groupName, setGroupName] = useState("");
   const [groupMin, setGroupMin] = useState("0");
   const [groupMax, setGroupMax] = useState("1");
+  const [groupItemId, setGroupItemId] = useState<string>("");
+  const [groupOptions, setGroupOptions] = useState<OptionDraft[]>([
+    { name: "", price: "" },
+    { name: "", price: "" },
+  ]);
 
   const [addingToGroup, setAddingToGroup] = useState<string | null>(null);
   const [optName, setOptName] = useState("");
@@ -42,22 +58,47 @@ export function CatalogComplements({ merchantId }: Props) {
     enabled: !!merchantId,
   });
 
+  const items = useQuery({
+    queryKey: ["catalog-items", merchantId],
+    queryFn: () =>
+      apiGet<CatalogItem[]>("/catalog/items", {
+        merchant_id: merchantId ?? undefined,
+      }),
+    enabled: !!merchantId && showGroupForm,
+  });
+
   const createGroup = useMutation({
     mutationFn: () => {
       if (!merchantId) throw new Error("Selecione merchant");
-      return apiPost("/catalog/option-groups", {
+      if (!groupItemId) throw new Error("Selecione item ancora");
+      const opts = groupOptions
+        .filter((o) => o.name.trim() && o.price.trim())
+        .map((o) => ({
+          name: o.name.trim(),
+          price: parseFloat(o.price.replace(",", ".")) || 0,
+          status: "AVAILABLE",
+        }));
+      if (!opts.length) throw new Error("Adicione pelo menos 1 complemento");
+      return apiPost("/catalog/option-groups/add-to-item", {
         merchant_id: merchantId,
+        item_id: groupItemId,
         name: groupName.trim(),
-        min_choices: parseInt(groupMin) || 0,
-        max_choices: parseInt(groupMax) || 1,
+        min: parseInt(groupMin) || 0,
+        max: parseInt(groupMax) || 1,
+        options: opts,
       });
     },
     onSuccess: () => {
-      toast.success("Grupo criado");
+      toast.success("Grupo + complementos criados");
       setShowGroupForm(false);
       setGroupName("");
       setGroupMin("0");
       setGroupMax("1");
+      setGroupItemId("");
+      setGroupOptions([
+        { name: "", price: "" },
+        { name: "", price: "" },
+      ]);
       qc.invalidateQueries({ queryKey: ["option-groups", merchantId] });
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha"),
@@ -99,19 +140,17 @@ export function CatalogComplements({ merchantId }: Props) {
     onError: (e: any) => toast.error(e?.message ?? "Falha"),
   });
 
-  const uploadOptionImage = useMutation({
-    mutationFn: async ({ id, file }: { id: string; file: File }) => {
+  const toggleGroup = useMutation({
+    mutationFn: ({ id, currentStatus }: { id: string; currentStatus: string }) => {
       if (!merchantId) throw new Error("Selecione merchant");
-      const up = await apiUpload<UploadImageOut>("/catalog/upload-image", file, {
-        merchant_id: merchantId,
-      });
-      if (!up?.path) throw new Error("upload sem path");
-      return apiPatch(`/catalog/options/${id}?merchant_id=${merchantId}`, {
-        image_path: up.path,
-      });
+      const next = currentStatus === "AVAILABLE" ? "UNAVAILABLE" : "AVAILABLE";
+      return apiPatch(
+        `/catalog/option-groups/${id}/status?merchant_id=${merchantId}&status=${next}`,
+        {},
+      );
     },
     onSuccess: () => {
-      toast.success("Foto enviada");
+      toast.success("Status do grupo atualizado");
       qc.invalidateQueries({ queryKey: ["option-groups", merchantId] });
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha"),
@@ -151,13 +190,31 @@ export function CatalogComplements({ merchantId }: Props) {
         {showGroupForm && (
           <div className="space-y-3 rounded-md border bg-muted/30 p-4">
             <div className="space-y-1">
-              <Label htmlFor="gname">Nome do grupo</Label>
+              <Label htmlFor="gitem">Vincular a item *</Label>
+              <select
+                id="gitem"
+                value={groupItemId}
+                onChange={(e) => setGroupItemId(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Selecione um item...</option>
+                {items.data?.map((it) => (
+                  <option key={it.id} value={it.id}>
+                    {it.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                iFood Catalog v2.0 exige item ancora pra criar grupo
+              </p>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="gname">Nome do grupo *</Label>
               <Input
                 id="gname"
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
                 placeholder="Ex: Bordas, Adicionais, Bebidas"
-                autoFocus
               />
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -182,11 +239,54 @@ export function CatalogComplements({ merchantId }: Props) {
                 />
               </div>
             </div>
+            <div className="space-y-2">
+              <Label>Complementos iniciais *</Label>
+              {groupOptions.map((opt, idx) => (
+                <div key={idx} className="grid gap-2 sm:grid-cols-[1fr_8rem]">
+                  <Input
+                    value={opt.name}
+                    onChange={(e) => {
+                      const next = [...groupOptions];
+                      next[idx] = { ...next[idx], name: e.target.value };
+                      setGroupOptions(next);
+                    }}
+                    placeholder={`Nome complemento ${idx + 1}`}
+                  />
+                  <Input
+                    value={opt.price}
+                    onChange={(e) => {
+                      const next = [...groupOptions];
+                      next[idx] = { ...next[idx], price: e.target.value };
+                      setGroupOptions(next);
+                    }}
+                    placeholder="Preço"
+                  />
+                </div>
+              ))}
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  setGroupOptions([
+                    ...groupOptions,
+                    { name: "", price: "" },
+                  ])
+                }
+              >
+                <Plus className="h-3 w-3" />
+                Mais um
+              </Button>
+            </div>
             <div className="flex gap-2">
               <Button
                 size="sm"
                 onClick={() => createGroup.mutate()}
-                disabled={createGroup.isPending || !groupName.trim()}
+                disabled={
+                  createGroup.isPending ||
+                  !groupName.trim() ||
+                  !groupItemId
+                }
               >
                 {createGroup.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -225,19 +325,44 @@ export function CatalogComplements({ merchantId }: Props) {
                   <div>
                     <div className="font-medium">{g.name ?? "—"}</div>
                     <div className="text-xs text-muted-foreground">
-                      Min {g.min ?? 0} · Max {g.max ?? 1} · Status {g.status ?? "—"}
+                      Min {g.min ?? 0} · Max {g.max ?? 1} ·{" "}
+                      <Badge
+                        variant={
+                          g.status === "AVAILABLE" ? "default" : "secondary"
+                        }
+                        className="ml-1"
+                      >
+                        {g.status === "AVAILABLE" ? "Ativo" : "Pausado"}
+                      </Badge>
                     </div>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      setAddingToGroup(addingToGroup === groupId ? null : groupId)
-                    }
-                  >
-                    <Plus className="h-3 w-3" />
-                    Complemento
-                  </Button>
+                  <div className="flex gap-2">
+                    {g.id && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          toggleGroup.mutate({
+                            id: g.id!,
+                            currentStatus: g.status ?? "AVAILABLE",
+                          })
+                        }
+                        disabled={toggleGroup.isPending}
+                      >
+                        {g.status === "AVAILABLE" ? "Pausar grupo" : "Ativar grupo"}
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setAddingToGroup(addingToGroup === groupId ? null : groupId)
+                      }
+                    >
+                      <Plus className="h-3 w-3" />
+                      Complemento
+                    </Button>
+                  </div>
                 </div>
 
                 {addingToGroup === groupId && (
@@ -306,42 +431,21 @@ export function CatalogComplements({ merchantId }: Props) {
                             </Badge>
                           </td>
                           <td className="py-2 text-right">
-                            <div className="inline-flex gap-1">
-                              <label
-                                htmlFor={`upopt-${o.id}`}
-                                className="inline-flex h-8 cursor-pointer items-center justify-center rounded-md border px-2 text-xs hover:bg-accent"
-                                title="Trocar foto"
+                            {o.id && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  toggleOption.mutate({
+                                    id: o.id,
+                                    currentStatus: o.status,
+                                  })
+                                }
+                                disabled={toggleOption.isPending}
                               >
-                                <Upload className="h-3 w-3" />
-                                <input
-                                  id={`upopt-${o.id}`}
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  onChange={(e) => {
-                                    const f = e.target.files?.[0];
-                                    if (f && o.id)
-                                      uploadOptionImage.mutate({ id: o.id, file: f });
-                                    e.target.value = "";
-                                  }}
-                                />
-                              </label>
-                              {o.id && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() =>
-                                    toggleOption.mutate({
-                                      id: o.id,
-                                      currentStatus: o.status,
-                                    })
-                                  }
-                                  disabled={toggleOption.isPending}
-                                >
-                                  {o.status === "AVAILABLE" ? "Pausar" : "Ativar"}
-                                </Button>
-                              )}
-                            </div>
+                                {o.status === "AVAILABLE" ? "Pausar" : "Ativar"}
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       ))}

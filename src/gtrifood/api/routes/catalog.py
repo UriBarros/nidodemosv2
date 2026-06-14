@@ -476,15 +476,113 @@ async def create_option_group(
     """DEPRECATED na Catalog v2.0: não existe POST /optionGroups standalone.
 
     Grupos nascem dentro de PUT /items com optionGroups + options aninhados.
-    Use POST /catalog/items/full enviando o item completo.
+    Use POST /catalog/option-groups/add-to-item (alto nível) ou POST
+    /catalog/items/full enviando o item completo.
     """
     raise HTTPException(
         status_code=501,
         detail=(
             "iFood Catalog v2.0 não suporta criar optionGroup standalone. "
-            "Use POST /catalog/items/full com optionGroups aninhados no payload."
+            "Use POST /catalog/option-groups/add-to-item ou POST "
+            "/catalog/items/full com optionGroups aninhados."
         ),
     )
+
+
+@router.post("/option-groups/add-to-item", status_code=201)
+async def add_option_group_to_item(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+) -> dict:
+    """Adiciona um grupo de complementos a um item existente.
+
+    Internamente: busca item completo via GET /items/{id}/flat, anexa o novo
+    optionGroup com options inline, e re-envia via PUT /items (idempotente).
+
+    Body:
+    {
+      "merchant_id": "<uuid local>",
+      "item_id": "<uuid local do CatalogItem>",
+      "name": "Bordas",
+      "min": 0,
+      "max": 1,
+      "options": [
+        {"name": "Catupiry", "price": 3.50, "status": "AVAILABLE"},
+        ...
+      ]
+    }
+    """
+    try:
+        merchant_uuid = uuid.UUID(str(payload.get("merchant_id")))
+        item_uuid = uuid.UUID(str(payload.get("item_id")))
+    except (ValueError, TypeError) as e:
+        raise HTTPException(400, f"id inválido: {e}") from e
+
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "nome do grupo obrigatório")
+    options = payload.get("options") or []
+    if not isinstance(options, list):
+        raise HTTPException(400, "options deve ser lista")
+
+    item_row = await db.execute(
+        select(CatalogItem.ifood_item_id).where(
+            CatalogItem.id == item_uuid, CatalogItem.tenant_id == tenant_id
+        )
+    )
+    ifood_item_id = item_row.scalar_one_or_none()
+    if not ifood_item_id:
+        raise HTTPException(404, "item não encontrado")
+
+    _, info, ifood = await _merchant_ctx(db, tenant_id, merchant_uuid)
+    api = CatalogAPI(ifood)
+
+    try:
+        flat = await api.get_item_flat(info["ifood_merchant_id"], ifood_item_id)
+    except IFoodAPIError as e:
+        raise HTTPException(502, f"iFood get_item_flat: {e.body}") from e
+
+    existing_groups = list(flat.get("optionGroups") or [])
+    new_options: list[dict] = []
+    for op in options:
+        if not op.get("name"):
+            continue
+        try:
+            price_val = float(op.get("price") or 0)
+        except (TypeError, ValueError):
+            raise HTTPException(400, f"preço inválido em {op}")
+        new_options.append({
+            "product": {"name": str(op["name"]).strip()},
+            "price": {"value": price_val},
+            "status": op.get("status") or "AVAILABLE",
+        })
+
+    existing_groups.append({
+        "name": name,
+        "min": int(payload.get("min") or 0),
+        "max": int(payload.get("max") or 1),
+        "status": "AVAILABLE",
+        "options": new_options,
+    })
+
+    item_payload = {
+        **flat,
+        "optionGroups": existing_groups,
+    }
+
+    try:
+        result = await api.upsert_item(
+            info["ifood_merchant_id"],
+            category_id=flat.get("categoryId") or "",
+            item=item_payload,
+        )
+    except IFoodAPIError as e:
+        raise HTTPException(
+            status_code=400 if 400 <= e.status_code < 500 else 502,
+            detail=f"iFood PUT /items: {e.body}",
+        ) from e
+    return result or {"status": "created"}
 
 
 @router.patch("/option-groups/{option_group_id}/status")
